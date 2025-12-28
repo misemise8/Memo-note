@@ -70,106 +70,39 @@ function showMainView() {
 }
 
 // セットアップビューのイベントリスナー
-function setupSetupViewListeners() {
-    const options = document.querySelectorAll('.setup-option');
-    const pathSelectionGroup = document.querySelector('.path-selection-group');
-    let selectedOption = 'default';
-    let selectedCustomPath = '';
+// フォルダ選択ボタン
+document.getElementById('browse-folder-btn').addEventListener('click', function() {
+    if (typeof CSInterface === 'undefined') {
+        alert('CSInterfaceが利用できません');
+        return;
+    }
 
-    options.forEach(option => {
-        option.addEventListener('click', function() {
-            options.forEach(o => o.classList.remove('selected'));
-            this.classList.add('selected');
-            selectedOption = this.dataset.option;
-
-            if (selectedOption === 'custom') {
-                pathSelectionGroup.style.display = 'block';
-            } else {
-                pathSelectionGroup.style.display = 'none';
-            }
-        });
-    });
-
-    // フォルダ選択ボタン
-    document.getElementById('browse-folder-btn').addEventListener('click', function() {
-        if (typeof CSInterface === 'undefined') {
-            alert('CSInterfaceが利用できません');
-            return;
-        }
-
-        // Node.jsを使ってネイティブのフォルダ選択ダイアログを開く
-        try {
-            const cep = new CSInterface();
-            
-            // ウィンドウを取得してダイアログを開く
-            if (typeof window.__adobe_cep__ !== 'undefined') {
-                // CEP Node.jsを使用
-                window.cep_node.require('./node_modules/electron').remote.dialog.showOpenDialog({
-                    properties: ['openDirectory', 'createDirectory'],
-                    title: 'Select the folder where processed clips will be saved.',
-                    buttonLabel: 'Select Folder'
-                }).then(result => {
-                    if (!result.canceled && result.filePaths.length > 0) {
-                        selectedCustomPath = result.filePaths[0];
-                        updatePathDisplay(result.filePaths[0]);
-                    }
-                });
-            } else {
-                // フォールバック: 従来のExtendScript方式
-                useFallbackDialog();
-            }
-        } catch (e) {
-            console.error('Native dialog error:', e);
-            useFallbackDialog();
-        }
-    });
-
-    // フォールバック用の従来型ダイアログ
-    function useFallbackDialog() {
-        const csInterface = new CSInterface();
-        csInterface.evalScript(`
-            (function() {
-                var folder = Folder.selectDialog("Select the folder where processed clips will be saved.");
+    const csInterface = new CSInterface();
+    
+    // Common Item Dialogを使用してフォルダを選択
+    csInterface.evalScript(`
+        (function() {
+            try {
+                // Common Item Dialogを使用
+                var folder = Folder.selectDialog("メモの保存先フォルダを選択してください");
                 if (folder) {
                     return folder.fsName;
                 }
                 return null;
-            })()
-        `, function(result) {
-            if (result && result !== 'null' && result !== 'undefined') {
-                selectedCustomPath = result;
-                updatePathDisplay(result);
+            } catch(e) {
+                return "error: " + e.toString();
             }
-        });
-    }
-
-    // パス表示を更新
-    function updatePathDisplay(path) {
-        const display = document.getElementById('selected-path-display');
-        const pathText = display.querySelector('.path-text');
-        
-        pathText.textContent = path;
-        display.classList.add('has-path');
-    }
-
-    // スキップボタン
-    document.getElementById('setup-skip-btn').addEventListener('click', function() {
-        saveSetupPreferences('default', null);
-    });
-
-    // 続けるボタン
-    document.getElementById('setup-continue-btn').addEventListener('click', function() {
-        if (selectedOption === 'custom') {
-            if (!selectedCustomPath) {
-                alert('カスタムパスを選択してください');
-                return;
-            }
-            saveSetupPreferences('custom', selectedCustomPath);
-        } else {
-            saveSetupPreferences('default', null);
+        })()
+    `, function(result) {
+        if (result && result !== 'null' && result !== 'undefined' && !result.startsWith('error:')) {
+            selectedCustomPath = result;
+            updatePathDisplay(result);
+        } else if (result && result.startsWith('error:')) {
+            console.error('Folder selection error:', result);
+            alert('フォルダの選択に失敗しました');
         }
     });
-}
+});
 
 // セットアップ設定を保存
 function saveSetupPreferences(mode, customPath) {
