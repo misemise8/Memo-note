@@ -197,43 +197,66 @@ body {
     transform: translate(-50%, -50%) scale(1);
 }
 
-.path-input-group {
-    display: flex;
-    gap: 6px;
-    margin-top: 10px;
+/* パス選択グループ */
+.path-selection-group {
+    margin-top: 12px;
     animation: slideDown 0.3s ease-out;
 }
 
-.path-input {
-    flex: 1;
+.selected-path {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     background: #2b2b2b;
     border: 1px solid #505050;
     border-radius: 4px;
-    color: #d0d0d0;
-    padding: 6px 10px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    color: #909090;
     font-size: 10px;
+    word-break: break-all;
+}
+
+.selected-path.has-path {
+    border-color: #5a9fd4;
+    color: #d0d0d0;
+}
+
+.selected-path svg {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+}
+
+.path-text {
+    flex: 1;
     min-width: 0;
 }
 
-.path-input:focus {
-    outline: none;
-    border-color: #5a9fd4;
-}
-
-.path-browse-btn {
-    padding: 6px 12px;
+.browse-folder-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
     background: #4a4a4a;
-    border: none;
+    border: 1px solid #505050;
     border-radius: 4px;
     color: #d0d0d0;
     cursor: pointer;
-    font-size: 10px;
+    font-size: 11px;
     transition: all 0.15s;
-    white-space: nowrap;
 }
 
-.path-browse-btn:hover {
+.browse-folder-btn:hover {
     background: #555;
+    border-color: #5a9fd4;
+}
+
+.browse-folder-btn svg {
+    width: 16px;
+    height: 16px;
 }
 
 .setup-actions {
@@ -389,6 +412,25 @@ body {
     content: "▸ ";
     color: #7ab857;
     margin-right: 4px;
+}
+
+.search-box {
+    margin-bottom: 8px;
+}
+
+.search-input {
+    width: 100%;
+    background: #2b2b2b;
+    border: 1px solid #505050;
+    border-radius: 3px;
+    color: #d0d0d0;
+    padding: 6px 8px;
+    font-size: 11px;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #5a9fd4;
 }
 
 .notes-list {
@@ -743,23 +785,4 @@ textarea:focus {
 .empty-hint {
     font-size: 10px;
     color: #707070;
-}
-
-.search-box {
-    margin-bottom: 8px;
-}
-
-.search-input {
-    width: 100%;
-    background: #2b2b2b;
-    border: 1px solid #505050;
-    border-radius: 3px;
-    color: #d0d0d0;
-    padding: 6px 8px;
-    font-size: 11px;
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: #5a9fd4;
 }

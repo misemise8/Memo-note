@@ -70,39 +70,115 @@ function showMainView() {
 }
 
 // セットアップビューのイベントリスナー
-// フォルダ選択ボタン
-document.getElementById('browse-folder-btn').addEventListener('click', function() {
-    if (typeof CSInterface === 'undefined') {
-        alert('CSInterfaceが利用できません');
-        return;
+function setupSetupViewListeners() {
+    const options = document.querySelectorAll('.setup-option');
+    const pathSelectionGroup = document.querySelector('.path-selection-group');
+    let selectedOption = 'default';
+    let selectedCustomPath = '';
+
+    // オプション選択
+    options.forEach(option => {
+        option.addEventListener('click', function() {
+            options.forEach(o => o.classList.remove('selected'));
+            this.classList.add('selected');
+            selectedOption = this.dataset.option;
+
+            if (selectedOption === 'custom') {
+                pathSelectionGroup.style.display = 'block';
+            } else {
+                pathSelectionGroup.style.display = 'none';
+            }
+        });
+    });
+
+    // パス表示を更新
+    function updatePathDisplay(path) {
+        const display = document.getElementById('selected-path-display');
+        const pathText = display.querySelector('.path-text');
+        
+        pathText.textContent = path;
+        display.classList.add('has-path');
     }
 
-    const csInterface = new CSInterface();
-    
-    // Common Item Dialogを使用してフォルダを選択
-    csInterface.evalScript(`
-        (function() {
-            try {
-                // Common Item Dialogを使用
-                var folder = Folder.selectDialog("メモの保存先フォルダを選択してください");
-                if (folder) {
-                    return folder.fsName;
+    // フォルダ選択ボタン
+    document.getElementById('browse-folder-btn').addEventListener('click', function() {
+        if (typeof CSInterface === 'undefined') {
+            alert('CSInterfaceが利用できません');
+            return;
+        }
+
+        // CEP Node.js環境でモダンなファイルダイアログを使用
+        try {
+            // CEP Node.jsのfsモジュールをテスト
+            const fs = window.cep_node.require('fs');
+            
+            // HTML5のinput要素を使った代替方法
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.style.display = 'none';
+            input.setAttribute('webkitdirectory', '');
+            input.setAttribute('directory', '');
+            
+            input.addEventListener('change', function(e) {
+                if (this.files && this.files.length > 0) {
+                    const path = this.files[0].path;
+                    // ファイルパスからフォルダパスを抽出
+                    const folderPath = path.substring(0, path.lastIndexOf('/'));
+                    selectedCustomPath = folderPath;
+                    updatePathDisplay(folderPath);
                 }
-                return null;
-            } catch(e) {
-                return "error: " + e.toString();
-            }
-        })()
-    `, function(result) {
-        if (result && result !== 'null' && result !== 'undefined' && !result.startsWith('error:')) {
-            selectedCustomPath = result;
-            updatePathDisplay(result);
-        } else if (result && result.startsWith('error:')) {
-            console.error('Folder selection error:', result);
-            alert('フォルダの選択に失敗しました');
+                document.body.removeChild(input);
+            });
+            
+            document.body.appendChild(input);
+            input.click();
+            
+        } catch (nodeError) {
+            console.log('Node.js method failed, using ExtendScript:', nodeError);
+            
+            // フォールバック: ExtendScriptのダイアログ
+            const csInterface = new CSInterface();
+            csInterface.evalScript(`
+                (function() {
+                    try {
+                        var folder = Folder.selectDialog("メモの保存先フォルダを選択してください");
+                        if (folder) {
+                            return folder.fsName;
+                        }
+                        return null;
+                    } catch(e) {
+                        return "error: " + e.toString();
+                    }
+                })()
+            `, function(result) {
+                if (result && result !== 'null' && result !== 'undefined' && !result.startsWith('error:')) {
+                    selectedCustomPath = result;
+                    updatePathDisplay(result);
+                } else if (result && result.startsWith('error:')) {
+                    console.error('Folder selection error:', result);
+                }
+            });
         }
     });
-});
+
+    // スキップボタン
+    document.getElementById('setup-skip-btn').addEventListener('click', function() {
+        saveSetupPreferences('default', null);
+    });
+
+    // 続けるボタン
+    document.getElementById('setup-continue-btn').addEventListener('click', function() {
+        if (selectedOption === 'custom') {
+            if (!selectedCustomPath) {
+                alert('カスタムパスを選択してください');
+                return;
+            }
+            saveSetupPreferences('custom', selectedCustomPath);
+        } else {
+            saveSetupPreferences('default', null);
+        }
+    });
+}
 
 // セットアップ設定を保存
 function saveSetupPreferences(mode, customPath) {
