@@ -9,9 +9,11 @@ let availableTags = [];
 let selectedTags = [];
 let dataFolderPath = null;
 let setupCompleted = false;
+let isInitialized = false;
 
 // 初期化
 function init() {
+    if (isInitialized) return;
     checkSetupStatus();
 }
 
@@ -107,36 +109,71 @@ function setupSetupViewListeners() {
             return;
         }
 
-        // CEP Node.js環境でモダンなファイルダイアログを使用
+        // Node.jsを使ってPowerShellを実行
         try {
-            // CEP Node.jsのfsモジュールをテスト
+            const exec = window.cep_node.require('child_process').exec;
             const fs = window.cep_node.require('fs');
+            const path = window.cep_node.require('path');
+            const os = window.cep_node.require('os');
             
-            // HTML5のinput要素を使った代替方法
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.style.display = 'none';
-            input.setAttribute('webkitdirectory', '');
-            input.setAttribute('directory', '');
+            // PowerShellスクリプト（Windows Vista以降の新しいダイアログAPI）
+            const psScript = `
+Add-Type -AssemblyName System.Windows.Forms
+[System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
+
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.ValidateNames = $false
+$dialog.CheckFileExists = $false
+$dialog.CheckPathExists = $true
+$dialog.FileName = "フォルダを選択"
+$dialog.Title = "メモの保存先フォルダを選択してください"
+$dialog.Filter = "フォルダ|*.folder"
+
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+    Split-Path $dialog.FileName
+}
+            `.trim();
             
-            input.addEventListener('change', function(e) {
-                if (this.files && this.files.length > 0) {
-                    const path = this.files[0].path;
-                    // ファイルパスからフォルダパスを抽出
-                    const folderPath = path.substring(0, path.lastIndexOf('/'));
-                    selectedCustomPath = folderPath;
-                    updatePathDisplay(folderPath);
+            // 一時ファイルを作成
+            const tempDir = os.tmpdir();
+            const psFilePath = path.join(tempDir, 'select_folder_explorer.ps1');
+            
+            fs.writeFileSync(psFilePath, psScript, 'utf8');
+            
+            // PowerShellを実行（STA モードで実行）
+            const command = `powershell.exe -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File "${psFilePath}"`;
+            
+            exec(command, { encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+                // 一時ファイルを削除
+                try {
+                    fs.unlinkSync(psFilePath);
+                } catch(e) {
+                    console.error('Failed to delete temp file:', e);
                 }
-                document.body.removeChild(input);
+                
+                if (error) {
+                    console.error('PowerShell execution error:', error);
+                    console.error('stderr:', stderr);
+                    alert('フォルダの選択に失敗しました');
+                    return;
+                }
+                
+                // 結果を整形
+                const result = stdout.trim();
+                
+                if (result && result.length > 0 && result !== 'null') {
+                    selectedCustomPath = result;
+                    updatePathDisplay(result);
+                    console.log('Selected folder:', result);
+                } else {
+                    console.log('No folder selected or cancelled');
+                }
             });
             
-            document.body.appendChild(input);
-            input.click();
+        } catch(nodeError) {
+            console.error('Node.js method failed:', nodeError);
             
-        } catch (nodeError) {
-            console.log('Node.js method failed, using ExtendScript:', nodeError);
-            
-            // フォールバック: ExtendScriptのダイアログ
+            // フォールバック: ExtendScriptの通常のダイアログ
             const csInterface = new CSInterface();
             csInterface.evalScript(`
                 (function() {
@@ -154,8 +191,6 @@ function setupSetupViewListeners() {
                 if (result && result !== 'null' && result !== 'undefined' && !result.startsWith('error:')) {
                     selectedCustomPath = result;
                     updatePathDisplay(result);
-                } else if (result && result.startsWith('error:')) {
-                    console.error('Folder selection error:', result);
                 }
             });
         }
