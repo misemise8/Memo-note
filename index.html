@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Memo Notes</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- セットアップビュー -->
+    <div id="setup-view">
+        <div class="setup-container">
+            <div class="setup-header">
+                <svg class="setup-icon" viewBox="0 0 64 64" fill="none">
+                    <rect x="16" y="12" width="32" height="40" rx="2" stroke="#5a9fd4" stroke-width="2.5"/>
+                    <line x1="22" y1="22" x2="42" y2="22" stroke="#5a9fd4" stroke-width="2.5"/>
+                    <line x1="22" y1="28" x2="38" y2="28" stroke="#5a9fd4" stroke-width="2.5"/>
+                    <line x1="22" y1="34" x2="42" y2="34" stroke="#5a9fd4" stroke-width="2.5"/>
+                </svg>
+                <div class="setup-title">Memo Notes</div>
+                <div class="setup-subtitle">メモデータの保存場所を設定</div>
+            </div>
+
+            <div class="setup-content">
+                <div class="setup-description">
+                    メモとタグのデータを保存する場所を選択してください。<br>
+                    カスタムパスを選択すると、バックアップや移行が簡単になります。
+                </div>
+
+                <div class="setup-option selected" data-option="default">
+                    <div class="setup-option-title">
+                        <span class="setup-radio"></span>
+                        デフォルトの場所 (推奨)
+                    </div>
+                    <div class="setup-option-desc">
+                        ドキュメントフォルダに保存されます<br>
+                        <span style="color: #707070; font-size: 10px;">~/Documents/MemoNotes/</span>
+                    </div>
+                </div>
+
+                <div class="setup-option" data-option="custom">
+                    <div class="setup-option-title">
+                        <span class="setup-radio"></span>
+                        カスタムパス
+                    </div>
+                    <div class="setup-option-desc">
+                        任意のフォルダを選択できます
+                    </div>
+                    <div class="path-selection-group" style="display: none;">
+                        <div class="selected-path" id="selected-path-display">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M2 3h5l1 2h6v8H2V3z" stroke="currentColor" stroke-width="1.5" fill="currentColor" opacity="0.3"/>
+                            </svg>
+                            <span class="path-text">フォルダが選択されていません</span>
+                        </div>
+                        <button class="browse-folder-btn" id="browse-folder-btn">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M2 3h5l1 2h6v8H2V3z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                <path d="M8 7v4M6 9h4" stroke="currentColor" stroke-width="1.5"/>
+                            </svg>
+                            フォルダを選択
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setup-actions">
+                <button class="setup-btn setup-btn-secondary" id="setup-skip-btn">スキップ</button>
+                <button class="setup-btn setup-btn-primary" id="setup-continue-btn">続ける</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- メインビュー -->
+    <div id="main-view" class="view-hidden">
+        <div class="container">
+            <div class="header">
+                <div class="header-title">Memo Notes</div>
+                <div class="header-actions">
+                    <button class="icon-btn" id="newNoteBtn" title="新規メモ">
+                        <svg width="16" height="16" viewBox="0 0 16 16">
+                            <path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" id="searchBtn" title="検索">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                            <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/>
+                            <path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.5"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="scope-tabs">
+                <button class="scope-tab active" data-scope="global">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.5"/>
+                    </svg>
+                    全体
+                </button>
+                <button class="scope-tab" data-scope="project">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <rect x="2" y="3" width="12" height="10" rx="1" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M2 6h12" stroke="currentColor" stroke-width="1.5"/>
+                    </svg>
+                    プロジェクト
+                </button>
+            </div>
+
+            <div class="search-box" id="searchBox" style="display: none;">
+                <input type="text" class="search-input" id="searchInput" placeholder="メモを検索...">
+            </div>
+
+            <div class="project-info" id="projectInfo" style="display: none;">
+                <div class="project-label">プロジェクト</div>
+                <div class="project-name" id="projectName"></div>
+            </div>
+
+            <div class="notes-list" id="notesList">
+                <div class="empty-state">
+                    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" class="empty-icon">
+                        <rect x="16" y="12" width="32" height="40" rx="2" stroke="currentColor" stroke-width="2"/>
+                        <line x1="22" y1="22" x2="42" y2="22" stroke="currentColor" stroke-width="2"/>
+                        <line x1="22" y1="28" x2="38" y2="28" stroke="currentColor" stroke-width="2"/>
+                        <line x1="22" y1="34" x2="42" y2="34" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    <div class="empty-text">
+                        まだメモがありません<br>
+                        <span class="empty-hint">新規メモボタンでメモを作成</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="editor-section" id="editorSection">
+                <div class="editor-header">
+                    <div class="editor-title" id="editorTitle">新規メモ</div>
+                    <div class="editor-header-actions">
+                        <button class="btn btn-sm" id="saveNoteBtn">保存</button>
+                        <button class="btn btn-secondary btn-sm" id="cancelBtn">キャンセル</button>
+                    </div>
+                    <button class="editor-close" id="closeEditorBtn">×</button>
+                </div>
+                
+                <textarea id="noteTextarea" placeholder="メモしたい内容を書いてください..."></textarea>
+                
+                <div class="tag-manager">
+                    <div class="tag-manager-header">
+                        <div class="tag-manager-title">タグを選択</div>
+                        <button class="tag-manager-add" id="addTagBtn">+ タグを追加</button>
+                    </div>
+                    <div class="tag-add-input" id="tagAddInput">
+                        <input type="text" class="tag-add-field" id="newTagInput" placeholder="新しいタグ名">
+                        <button class="tag-add-btn" id="saveNewTagBtn">追加</button>
+                    </div>
+                    <div class="tag-list" id="tagList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="CSInterface.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
