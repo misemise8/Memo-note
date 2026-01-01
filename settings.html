@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>設定 - Memo Notes</title>
+    <link rel="stylesheet" href="settings-style.css">
+</head>
+<body>
+    <div class="settings-window">
+        <div class="settings-header">
+            <div class="settings-header-title">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
+                    <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.5 3.5l1.5 1.5M11 11l1.5 1.5M3.5 12.5l1.5-1.5M11 5l1.5-1.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+                設定
+            </div>
+        </div>
+
+        <div class="settings-body">
+            <!-- 保存場所設定 -->
+            <div class="settings-section">
+                <div class="settings-section-title">保存場所</div>
+                <div class="settings-option-group">
+                    <label class="settings-radio-option">
+                        <input type="radio" name="storage-mode" value="default" checked>
+                        <span class="settings-radio-custom"></span>
+                        <div class="settings-radio-label">
+                            <div class="settings-radio-title">デフォルトの場所</div>
+                            <div class="settings-radio-desc">~/Documents/MemoNotes/</div>
+                        </div>
+                    </label>
+                    <label class="settings-radio-option">
+                        <input type="radio" name="storage-mode" value="custom">
+                        <span class="settings-radio-custom"></span>
+                        <div class="settings-radio-label">
+                            <div class="settings-radio-title">カスタムパス</div>
+                            <div class="settings-radio-desc" id="custom-path-display">未設定</div>
+                        </div>
+                    </label>
+                    <button class="settings-btn" id="change-path-btn">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <path d="M2 3h5l1 2h6v8H2V3z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        </svg>
+                        保存先フォルダを変更
+                    </button>
+                </div>
+            </div>
+
+            <!-- 表示設定 -->
+            <div class="settings-section">
+                <div class="settings-section-title">表示設定</div>
+                
+                <div class="settings-item">
+                    <label class="settings-label">
+                        メモ本文のフォントサイズ
+                        <span class="settings-value" id="note-font-size-value">15px</span>
+                    </label>
+                    <input type="range" class="settings-slider" id="note-font-size" min="12" max="20" value="15" step="1">
+                </div>
+
+                <div class="settings-item">
+                    <label class="settings-label">
+                        エディタのフォントサイズ
+                        <span class="settings-value" id="editor-font-size-value">16px</span>
+                    </label>
+                    <input type="range" class="settings-slider" id="editor-font-size" min="13" max="22" value="16" step="1">
+                </div>
+
+                <div class="settings-item">
+                    <label class="settings-label">
+                        メモ一覧の行間
+                        <span class="settings-value" id="note-line-height-value">1.6</span>
+                    </label>
+                    <input type="range" class="settings-slider" id="note-line-height" min="1.2" max="2.0" value="1.6" step="0.1">
+                </div>
+            </div>
+
+            <!-- 動作設定 -->
+            <div class="settings-section">
+                <div class="settings-section-title">動作設定</div>
+                
+                <label class="settings-checkbox">
+                    <input type="checkbox" id="auto-save-enabled" checked>
+                    <span class="settings-checkbox-custom"></span>
+                    <div class="settings-checkbox-label">
+                        <div class="settings-checkbox-title">自動保存を有効にする</div>
+                        <div class="settings-checkbox-desc">メモ編集時に自動的に保存します</div>
+                    </div>
+                </label>
+
+                <label class="settings-checkbox">
+                    <input type="checkbox" id="confirm-delete-enabled" checked>
+                    <span class="settings-checkbox-custom"></span>
+                    <div class="settings-checkbox-label">
+                        <div class="settings-checkbox-title">削除時に確認する</div>
+                        <div class="settings-checkbox-desc">メモ削除時に確認ダイアログを表示します</div>
+                    </div>
+                </label>
+
+                <label class="settings-checkbox">
+                    <input type="checkbox" id="show-timestamp-enabled" checked>
+                    <span class="settings-checkbox-custom"></span>
+                    <div class="settings-checkbox-label">
+                        <div class="settings-checkbox-title">タイムスタンプを表示</div>
+                        <div class="settings-checkbox-desc">メモカードに作成日時を表示します</div>
+                    </div>
+                </label>
+            </div>
+
+            <!-- データ管理 -->
+            <div class="settings-section">
+                <div class="settings-section-title">データ管理</div>
+                <div class="settings-info">
+                    <div class="settings-info-item">
+                        <span class="settings-info-label">保存先:</span>
+                        <span class="settings-info-value" id="current-storage-path">読み込み中...</span>
+                    </div>
+                    <div class="settings-info-item">
+                        <span class="settings-info-label">グローバルメモ数:</span>
+                        <span class="settings-info-value" id="global-notes-count">0</span>
+                    </div>
+                    <div class="settings-info-item">
+                        <span class="settings-info-label">プロジェクトメモ数:</span>
+                        <span class="settings-info-value" id="project-notes-count">0</span>
+                    </div>
+                </div>
+                <button class="settings-btn settings-btn-secondary" id="open-folder-btn">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M2 3h5l1 2h6v8H2V3z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        <path d="M6 8h4M8 6v4" stroke="currentColor" stroke-width="1.5"/>
+                    </svg>
+                    データフォルダを開く
+                </button>
+            </div>
+        </div>
+
+        <div class="settings-footer">
+            <button class="settings-footer-btn settings-footer-btn-secondary" id="cancel-btn">キャンセル</button>
+            <button class="settings-footer-btn settings-footer-btn-primary" id="save-btn">保存</button>
+        </div>
+    </div>
+
+    <script src="CSInterface.js"></script>
+    <script src="settings-script.js"></script>
+</body>
+</html>

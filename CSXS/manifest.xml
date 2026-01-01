@@ -2,6 +2,7 @@
 <ExtensionManifest Version="7.0" ExtensionBundleId="com.yourname.memonotes" ExtensionBundleVersion="1.0.0" ExtensionBundleName="Memo Notes">
   <ExtensionList>
     <Extension Id="com.yourname.memonotes" Version="1.0.0"/>
+    <Extension Id="com.yourname.memonotes.settings" Version="1.0.0"/>
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
@@ -31,6 +32,34 @@
               <Height>600</Height>
               <Width>320</Width>
             </Size>
+          </Geometry>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+    <Extension Id="com.yourname.memonotes.settings">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./settings.html</MainPath>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>false</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>ModalDialog</Type>
+          <Menu>Memo Notes Settings</Menu>
+          <Geometry>
+            <Size>
+              <Height>650</Height>
+              <Width>550</Width>
+            </Size>
+            <MinSize>
+              <Height>500</Height>
+              <Width>450</Width>
+            </MinSize>
+            <MaxSize>
+              <Height>800</Height>
+              <Width>700</Width>
+            </MaxSize>
           </Geometry>
         </UI>
       </DispatchInfo>

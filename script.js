@@ -11,6 +11,18 @@ let dataFolderPath = null;
 let setupCompleted = false;
 let isInitialized = false;
 
+// 設定
+let settings = {
+    storageMode: 'default',
+    customPath: '',
+    noteFontSize: 15,
+    editorFontSize: 16,
+    noteLineHeight: 1.6,
+    autoSaveEnabled: true,
+    confirmDeleteEnabled: true,
+    showTimestampEnabled: true
+};
+
 // 初期化
 function init() {
     if (isInitialized) return;
@@ -42,6 +54,12 @@ function checkSetupStatus() {
                 const prefs = JSON.parse(result);
                 dataFolderPath = prefs.dataFolderPath;
                 setupCompleted = true;
+                
+                // 設定を読み込み
+                if (prefs.settings) {
+                    settings = Object.assign(settings, prefs.settings);
+                }
+                
                 showMainView();
             } catch (e) {
                 showSetupView();
@@ -63,12 +81,20 @@ function showSetupView() {
 function showMainView() {
     document.getElementById('setup-view').classList.add('view-hidden');
     document.getElementById('main-view').classList.remove('view-hidden');
+    applySettings();
     initDataFolder();
     loadGlobalNotes();
     loadAvailableTags();
     getCurrentProject();
     setupEventListeners();
     renderNotes();
+}
+
+// 設定を適用
+function applySettings() {
+    document.documentElement.style.setProperty('--note-font-size', settings.noteFontSize + 'px');
+    document.documentElement.style.setProperty('--editor-font-size', settings.editorFontSize + 'px');
+    document.documentElement.style.setProperty('--note-line-height', settings.noteLineHeight);
 }
 
 // セットアップビューのイベントリスナー
@@ -116,7 +142,7 @@ function setupSetupViewListeners() {
             const path = window.cep_node.require('path');
             const os = window.cep_node.require('os');
             
-            // PowerShellスクリプト（Windows Vista以降の新しいダイアログAPI）
+            // PowerShellスクリプト
             const psScript = `
 Add-Type -AssemblyName System.Windows.Forms
 [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
@@ -140,7 +166,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             
             fs.writeFileSync(psFilePath, psScript, 'utf8');
             
-            // PowerShellを実行（STA モードで実行）
+            // PowerShellを実行
             const command = `powershell.exe -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File "${psFilePath}"`;
             
             exec(command, { encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
@@ -158,22 +184,19 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                     return;
                 }
                 
-                // 結果を整形
                 const result = stdout.trim();
                 
                 if (result && result.length > 0 && result !== 'null') {
                     selectedCustomPath = result;
                     updatePathDisplay(result);
                     console.log('Selected folder:', result);
-                } else {
-                    console.log('No folder selected or cancelled');
                 }
             });
             
         } catch(nodeError) {
             console.error('Node.js method failed:', nodeError);
             
-            // フォールバック: ExtendScriptの通常のダイアログ
+            // フォールバック
             const csInterface = new CSInterface();
             csInterface.evalScript(`
                 (function() {
@@ -232,7 +255,8 @@ function saveSetupPreferences(mode, customPath) {
             const prefs = {
                 setupCompleted: true,
                 mode: 'default',
-                dataFolderPath: folderPath
+                dataFolderPath: folderPath,
+                settings: settings
             };
 
             savePrefsFile(prefs);
@@ -243,7 +267,8 @@ function saveSetupPreferences(mode, customPath) {
         const prefs = {
             setupCompleted: true,
             mode: 'custom',
-            dataFolderPath: customPath
+            dataFolderPath: customPath,
+            settings: settings
         };
 
         savePrefsFile(prefs);
@@ -543,7 +568,6 @@ function saveCurrentNotes() {
         saveProjectNotes();
     }
 }
-
 // メモ一覧の描画
 function renderNotes(filter = '') {
     const notesList = document.getElementById('notesList');
@@ -580,7 +604,7 @@ function renderNotes(filter = '') {
     notesList.innerHTML = filteredNotes.map(note => `
         <div class="note-card" data-id="${note.id}">
             <div class="note-header">
-                <div class="note-timestamp">${formatDate(note.timestamp)}</div>
+                ${settings.showTimestampEnabled ? `<div class="note-timestamp">${formatDate(note.timestamp)}</div>` : '<div></div>'}
                 <div class="note-actions">
                     <button class="note-action-btn edit-btn" data-id="${note.id}" title="編集">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -706,16 +730,20 @@ function saveNote() {
 
 // メモ削除
 function deleteNote(id) {
-    if (confirm('このメモを削除しますか?')) {
-        if (currentScope === 'global') {
-            globalNotes = globalNotes.filter(n => n.id !== id);
-            saveGlobalNotes();
-        } else {
-            projectNotes = projectNotes.filter(n => n.id !== id);
-            saveProjectNotes();
-        }
-        renderNotes();
+    const shouldConfirm = settings.confirmDeleteEnabled;
+    
+    if (shouldConfirm && !confirm('このメモを削除しますか?')) {
+        return;
     }
+    
+    if (currentScope === 'global') {
+        globalNotes = globalNotes.filter(n => n.id !== id);
+        saveGlobalNotes();
+    } else {
+        projectNotes = projectNotes.filter(n => n.id !== id);
+        saveProjectNotes();
+    }
+    renderNotes();
 }
 
 // エディタを閉じる
@@ -760,14 +788,61 @@ function switchScope(scope) {
     renderNotes();
 }
 
+// 設定ウィンドウを開く
+function openSettingsWindow() {
+    if (typeof CSInterface === 'undefined') {
+        alert('CSInterfaceが利用できません');
+        return;
+    }
+
+    const csInterface = new CSInterface();
+    
+    // メモ数をカウントして設定ファイルに保存
+    const noteCounts = {
+        global: globalNotes.length,
+        project: projectNotes.length
+    };
+    
+    csInterface.evalScript(`
+        (function() {
+            var prefsFile = new File(Folder.userData + "/MemoNotesPrefs.json");
+            if (prefsFile.exists) {
+                prefsFile.open("r");
+                var content = prefsFile.read();
+                prefsFile.close();
+                return content;
+            }
+            return null;
+        })()
+    `, function(result) {
+        let prefs = {};
+        if (result && result !== 'null') {
+            try {
+                prefs = JSON.parse(result);
+            } catch(e) {}
+        }
+        
+        prefs.noteCounts = noteCounts;
+        savePrefsFile(prefs);
+        
+        // 設定ウィンドウを開く
+        csInterface.requestOpenExtension('com.yourname.memonotes.settings', '');
+    });
+}
+
 // イベントリスナーの設定
 function setupEventListeners() {
+    // メインボタン
     document.getElementById('newNoteBtn').addEventListener('click', newNote);
     document.getElementById('searchBtn').addEventListener('click', toggleSearch);
+    document.getElementById('settingsBtn').addEventListener('click', openSettingsWindow); 
+    
+    // エディタ
     document.getElementById('saveNoteBtn').addEventListener('click', saveNote);
     document.getElementById('cancelBtn').addEventListener('click', closeEditor);
     document.getElementById('closeEditorBtn').addEventListener('click', closeEditor);
     
+    // タグ管理
     document.getElementById('addTagBtn').addEventListener('click', () => {
         document.getElementById('tagAddInput').classList.toggle('active');
         document.getElementById('newTagInput').focus();
@@ -781,16 +856,20 @@ function setupEventListeners() {
         }
     });
     
+    // 検索
     document.getElementById('searchInput').addEventListener('input', (e) => {
         renderNotes(e.target.value);
     });
     
+    // スコープタブ
     document.querySelectorAll('.scope-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             switchScope(tab.dataset.scope);
         });
     });
+
     
+    // キーボードショートカット
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey || e.metaKey) {
             if (e.key === 'n') {
@@ -802,6 +881,15 @@ function setupEventListeners() {
             } else if (e.key === 's' && document.getElementById('editorSection').classList.contains('active')) {
                 e.preventDefault();
                 saveNote();
+            } else if (e.key === ',') {
+                e.preventDefault();
+                openSettingsModal();
+            }
+        } else if (e.key === 'Escape') {
+            if (document.getElementById('settings-modal').classList.contains('active')) {
+                closeSettingsModal();
+            } else if (document.getElementById('editorSection').classList.contains('active')) {
+                closeEditor();
             }
         }
     });
