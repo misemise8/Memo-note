@@ -32,6 +32,7 @@ function loadSettings() {
         (function() {
             var prefsFile = new File(Folder.userData + "/MemoNotesPrefs.json");
             if (prefsFile.exists) {
+                prefsFile.encoding = "UTF-8"; // エンコードを明示的に指定
                 prefsFile.open("r");
                 var content = prefsFile.read();
                 prefsFile.close();
@@ -42,8 +43,13 @@ function loadSettings() {
     `, function(result) {
         if (result && result !== 'null') {
             try {
-                const prefs = JSON.parse(result);
-                dataFolderPath = prefs.dataFolderPath;
+                // 【重要】Windowsパスの \ を / に置換してパースエラーを防ぐ
+                var sanitizedResult = result.replace(/\\/g, "/");
+                const prefs = JSON.parse(sanitizedResult);
+                
+                // dataFolderPathの取得（settings.htmlでの変数名に合わせて修正）
+                // prefs.customPath または prefs.dataFolderPath
+                dataFolderPath = prefs.customPath || prefs.dataFolderPath || ''; 
                 
                 if (prefs.settings) {
                     settings = Object.assign(settings, prefs.settings);
@@ -99,50 +105,62 @@ function loadSettingsToUI() {
 
 // 設定を保存
 function saveSettings() {
-    // フォントサイズ
+    // 1. 現在のUIから設定値を集める
     settings.noteFontSize = parseInt(document.getElementById('note-font-size').value);
     settings.editorFontSize = parseInt(document.getElementById('editor-font-size').value);
-    
-    // 行間
     settings.noteLineHeight = parseFloat(document.getElementById('note-line-height').value);
     
-    // チェックボックス
-    settings.autoSaveEnabled = document.getElementById('auto-save-enabled').checked;
-    settings.confirmDeleteEnabled = document.getElementById('confirm-delete-enabled').checked;
-    settings.showTimestampEnabled = document.getElementById('show-timestamp-enabled').checked;
+    // チェックボックスのIDが HTML(settings.html) と一致しているか注意
+    // もし HTML側が 'auto-save-toggle' ならそれに合わせる必要があります
+    settings.autoSaveEnabled = document.getElementById('auto-save-toggle')?.checked || false;
+    settings.confirmDeleteEnabled = document.getElementById('confirm-delete-toggle')?.checked || false;
+    settings.showTimestampEnabled = document.getElementById('show-timestamp-toggle')?.checked || false;
     
-    // ストレージモード
     const selectedMode = document.querySelector('input[name="storage-mode"]:checked').value;
     settings.storageMode = selectedMode;
     
-    // 設定ファイルを保存
+    // カスタムパス（もしあれば）も取得
+    const customPathInput = document.getElementById('custom-path-input');
+    const currentCustomPath = customPathInput ? customPathInput.value.replace(/\\/g, "/") : "";
+
     if (typeof CSInterface !== 'undefined') {
         const csInterface = new CSInterface();
+        
+        // 【修正ポイント】既存ファイルの有無にかかわらず、保存を実行する流れにする
         csInterface.evalScript(`
             (function() {
                 var prefsFile = new File(Folder.userData + "/MemoNotesPrefs.json");
                 if (prefsFile.exists) {
+                    prefsFile.encoding = "UTF-8";
                     prefsFile.open("r");
                     var content = prefsFile.read();
                     prefsFile.close();
                     return content;
                 }
-                return null;
+                return "empty"; // ファイルがない場合は文字列 "empty" を返す
             })()
         `, function(result) {
             let prefs = {};
-            if (result && result !== 'null') {
+            
+            if (result && result !== "empty" && result !== "null") {
                 try {
-                    prefs = JSON.parse(result);
-                } catch(e) {}
+                    // 既存のデータを壊さないように読み込む
+                    prefs = JSON.parse(result.replace(/\\/g, "/"));
+                } catch(e) {
+                    console.error("Parse error:", e);
+                }
             }
             
+            // 2. データを更新（新規作成時もここを通る）
             prefs.settings = settings;
+            prefs.storageMode = settings.storageMode;
+            prefs.customPath = currentCustomPath; // 重要：パスを保存に含める
+            
+            // 3. 保存実行
             savePrefsFile(prefs);
         });
     }
     
-    // ウィンドウを閉じる
     closeWindow();
 }
 
@@ -151,15 +169,20 @@ function savePrefsFile(prefs) {
     if (typeof CSInterface === 'undefined') return;
 
     const csInterface = new CSInterface();
-    const jsonStr = JSON.stringify(prefs).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
-    
+    // JSON文字列化
+    const jsonStr = JSON.stringify(prefs);
+    // パスに含まれるバックスラッシュ等が壊れないよう、安全にエンコードして渡す
+    const encodedJson = encodeURIComponent(jsonStr); 
+
     csInterface.evalScript(`
         (function() {
             try {
                 var prefsFile = new File(Folder.userData + "/MemoNotesPrefs.json");
                 prefsFile.encoding = "UTF-8";
                 prefsFile.open("w");
-                prefsFile.write("${jsonStr}");
+                // 渡された文字列をデコードして書き込む
+                var data = decodeURIComponent("${encodedJson}");
+                prefsFile.write(data);
                 prefsFile.close();
                 return "success";
             } catch(e) {
@@ -167,7 +190,7 @@ function savePrefsFile(prefs) {
             }
         })()
     `, function(result) {
-        console.log('Settings save result:', result);
+        console.log('Settings: Prefs save result:', result);
     });
 }
 

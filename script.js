@@ -25,10 +25,51 @@ let settings = {
 
 // 初期化
 function init() {
-    if (isInitialized) return;
-    checkSetupStatus();
+    const csInterface = new CSInterface();
+    
+    csInterface.evalScript(`
+        (function() {
+            var prefsFile = new File(Folder.userData + "/MemoNotesPrefs.json");
+            if (prefsFile.exists) {
+                prefsFile.encoding = "UTF-8";
+                prefsFile.open("r");
+                var content = prefsFile.read();
+                prefsFile.close();
+                return content;
+            }
+            return "not_found";
+        })()
+    `, function(result) {
+        if (result === "not_found" || !result || result === "null") {
+            showSetupView();
+        } else {
+            try {
+                // Windowsのバックスラッシュ問題を解決
+                var sanitizedResult = result.replace(/\\/g, "/");
+                const prefs = JSON.parse(sanitizedResult);
+                
+                // 判定ロジックを修正：どちらのプロパティ名でも受け付けるようにする
+                const savedPath = prefs.customPath || prefs.dataFolderPath;
+                const mode = prefs.storageMode;
+
+                if (mode === 'default' || (mode === 'custom' && savedPath)) {
+                    storageMode = mode;
+                    customPath = savedPath || '';
+                    applyDisplaySettings(prefs);
+                    showMainView();
+                } else {
+                    // 必要なデータが足りない場合はセットアップへ
+                    showSetupView();
+                }
+            } catch (e) {
+                console.error("Parse error:", e);
+                showSetupView();
+            }
+        }
+    });
 }
 
+// セットアップ状態チェック
 // セットアップ状態チェック
 function checkSetupStatus() {
     if (typeof CSInterface === 'undefined') {
@@ -52,19 +93,28 @@ function checkSetupStatus() {
         if (result && result !== 'null') {
             try {
                 const prefs = JSON.parse(result);
-                dataFolderPath = prefs.dataFolderPath;
-                setupCompleted = true;
                 
-                // 設定を読み込み
-                if (prefs.settings) {
-                    settings = Object.assign(settings, prefs.settings);
+                // ★ここが重要：setupCompletedフラグをチェック
+                if (prefs.setupCompleted === true) {
+                    dataFolderPath = prefs.dataFolderPath;
+                    setupCompleted = true;
+                    
+                    // 設定を読み込み
+                    if (prefs.settings) {
+                        settings = Object.assign(settings, prefs.settings);
+                    }
+                    
+                    showMainView();
+                } else {
+                    // セットアップが完了していない場合
+                    showSetupView();
                 }
-                
-                showMainView();
             } catch (e) {
+                console.error('Failed to parse prefs:', e);
                 showSetupView();
             }
         } else {
+            // 設定ファイルが存在しない場合
             showSetupView();
         }
     });
@@ -281,15 +331,20 @@ function savePrefsFile(prefs) {
     if (typeof CSInterface === 'undefined') return;
 
     const csInterface = new CSInterface();
-    const jsonStr = JSON.stringify(prefs).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+    // 手動でバックスラッシュを増やしすぎないよう、JSON.stringifyの結果をそのまま安全に渡す
+    const jsonStr = JSON.stringify(prefs);
     
+    // ExtendScriptに渡す際に、文字列リテラルとして壊れないよう最小限のエスケープを施す
+    const encodedJson = encodeURI(jsonStr); 
+
     csInterface.evalScript(`
         (function() {
             try {
                 var prefsFile = new File(Folder.userData + "/MemoNotesPrefs.json");
                 prefsFile.encoding = "UTF-8";
                 prefsFile.open("w");
-                prefsFile.write("${jsonStr}");
+                // decodeURIを使用して元に戻してから保存
+                prefsFile.write(decodeURI("${encodedJson}"));
                 prefsFile.close();
                 return "success";
             } catch(e) {
