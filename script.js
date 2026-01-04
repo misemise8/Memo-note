@@ -10,6 +10,7 @@ let selectedTags = [];
 let dataFolderPath = null;
 let setupCompleted = false;
 let isInitialized = false;
+let eventListenersSetup = false;
 
 // 設定
 let settings = {
@@ -265,7 +266,7 @@ function saveSetupPreferences(mode, customPath) {
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
 
-    // ★既存の設定を読み込んでからマージ
+    // 既存の設定を読み込んでからマージ
     csInterface.evalScript(`
         $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
         readJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json");
@@ -286,7 +287,7 @@ function saveSetupPreferences(mode, customPath) {
                 const folderPath = docPath.replace(/\\/g, '/') + '/MemoNotes';
                 dataFolderPath = folderPath;
                 
-                // ★既存データを保持してマージ
+                // 既存データを保持してマージ
                 prefs.setupCompleted = true;
                 prefs.storageMode = 'default';
                 prefs.dataFolderPath = folderPath;
@@ -303,7 +304,7 @@ function saveSetupPreferences(mode, customPath) {
             const folderPath = customPath.replace(/\\/g, '/');
             dataFolderPath = folderPath;
             
-            // ★既存データを保持してマージ
+            // 既存データを保持してマージ
             prefs.setupCompleted = true;
             prefs.storageMode = 'custom';
             prefs.dataFolderPath = folderPath;
@@ -866,7 +867,7 @@ function openSettingsWindow() {
 
 // イベントリスナーの設定
 function setupEventListeners() {
-    
+
     if (eventListenersSetup) return;
     eventListenersSetup = true;
 

@@ -51,8 +51,7 @@ function loadSettings() {
         if (result && result !== 'null') {
             try {
                 const prefs = JSON.parse(result);
-                
-                // ★変数名を統一
+            
                 dataFolderPath = prefs.dataFolderPath || '';
                 
                 if (prefs.settings) {
@@ -124,7 +123,7 @@ function saveSettings() {
         const csInterface = new CSInterface();
         const extensionPath = csInterface.getSystemPath('extension');
         
-        // ★既存の設定ファイルを読み込む
+        // 既存の設定ファイルを読み込む
         csInterface.evalScript(`
             $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
             readJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json");
@@ -139,15 +138,15 @@ function saveSettings() {
                 }
             }
             
-            // ★既存データを保持しつつ更新
+            // 既存データを保持しつつ更新
             prefs.settings = settings;
             prefs.noteCounts = {
                 global: globalNotesCount,
                 project: projectNotesCount
             };
             // setupCompleted と dataFolderPath は保持される
-            
-            // ★保存完了を待ってから閉じる
+
+            // 保存完了を待ってから閉じる
             savePrefsFile(prefs, function() {
                 setTimeout(closeWindow, 300);
             });
@@ -227,7 +226,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             const result = stdout.trim();
             
             if (result && result.length > 0 && result !== 'null') {
-                const safePath = result.replace(/\\/g, '/'); // ★パスを統一
+                const safePath = result.replace(/\\/g, '/'); 
                 settings.customPath = safePath;
                 document.getElementById('custom-path-display').textContent = safePath;
                 document.querySelector('input[name="storage-mode"][value="custom"]').checked = true;
@@ -251,7 +250,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                     }
                     
                     prefs.storageMode = 'custom';
-                    prefs.dataFolderPath = safePath; // ★エスケープ済みパスを使用
+                    prefs.dataFolderPath = safePath;
                     prefs.settings = settings;
                     
                     savePrefsFile(prefs, function() {
@@ -281,7 +280,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             })()
         `, function(result) {
             if (result && result !== 'null' && result !== 'undefined' && !result.startsWith('error:')) {
-                const safePath = result.replace(/\\/g, '/'); // ★パスを統一
+                const safePath = result.replace(/\\/g, '/'); 
                 settings.customPath = safePath;
                 document.getElementById('custom-path-display').textContent = safePath;
                 document.querySelector('input[name="storage-mode"][value="custom"]').checked = true;
@@ -289,7 +288,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                 dataFolderPath = safePath;
                 document.getElementById('current-storage-path').textContent = safePath;
                 
-                // ★設定をファイルに保存
+                
                 const extensionPath = csInterface.getSystemPath('extension');
                 csInterface.evalScript(`
                     $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
