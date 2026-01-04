@@ -25,88 +25,49 @@ let settings = {
 
 // 初期化
 function init() {
-    const csInterface = new CSInterface();
-    
-    csInterface.evalScript(`
-        (function() {
-            var prefsFile = new File(Folder.userData + "/MemoNotesPrefs.json");
-            if (prefsFile.exists) {
-                prefsFile.encoding = "UTF-8";
-                prefsFile.open("r");
-                var content = prefsFile.read();
-                prefsFile.close();
-                return content;
-            }
-            return "not_found";
-        })()
-    `, function(result) {
-        if (result === "not_found" || !result || result === "null") {
-            showSetupView();
-        } else {
-            try {
-                // Windowsのバックスラッシュ問題を解決
-                var sanitizedResult = result.replace(/\\/g, "/");
-                const prefs = JSON.parse(sanitizedResult);
-                
-                // 判定ロジックを修正：どちらのプロパティ名でも受け付けるようにする
-                const savedPath = prefs.customPath || prefs.dataFolderPath;
-                const mode = prefs.storageMode;
-
-                if (mode === 'default' || (mode === 'custom' && savedPath)) {
-                    storageMode = mode;
-                    customPath = savedPath || '';
-                    applyDisplaySettings(prefs);
-                    showMainView();
-                } else {
-                    // 必要なデータが足りない場合はセットアップへ
-                    showSetupView();
-                }
-            } catch (e) {
-                console.error("Parse error:", e);
-                showSetupView();
-            }
-        }
-    });
+    if (isInitialized) return;
+    isInitialized = true;
+    checkSetupStatus();
 }
 
 // セットアップ状態チェック
-// セットアップ状態チェック
 function checkSetupStatus() {
+    console.log('checkSetupStatus called');
+    
     if (typeof CSInterface === 'undefined') {
+        console.log('CSInterface is undefined');
         showMainView();
         return;
     }
 
     const csInterface = new CSInterface();
+    const extensionPath = csInterface.getSystemPath('extension');
+    
     csInterface.evalScript(`
-        (function() {
-            var prefsFile = new File(Folder.userData + "/MemoNotesPrefs.json");
-            if (prefsFile.exists) {
-                prefsFile.open("r");
-                var content = prefsFile.read();
-                prefsFile.close();
-                return content;
-            }
-            return null;
-        })()
+        $.evalFile("${extensionPath}/file-utils.jsx");
+        readJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json");
     `, function(result) {
+        console.log('Prefs file result:', result);
+        
         if (result && result !== 'null') {
             try {
                 const prefs = JSON.parse(result);
                 
-                // ★ここが重要：setupCompletedフラグをチェック
+                console.log('Parsed prefs:', prefs);
+                console.log('setupCompleted flag:', prefs.setupCompleted);
+                
                 if (prefs.setupCompleted === true) {
                     dataFolderPath = prefs.dataFolderPath;
                     setupCompleted = true;
                     
-                    // 設定を読み込み
                     if (prefs.settings) {
                         settings = Object.assign(settings, prefs.settings);
                     }
                     
+                    console.log('Showing main view');
                     showMainView();
                 } else {
-                    // セットアップが完了していない場合
+                    console.log('setupCompleted is false, showing setup');
                     showSetupView();
                 }
             } catch (e) {
@@ -114,7 +75,7 @@ function checkSetupStatus() {
                 showSetupView();
             }
         } else {
-            // 設定ファイルが存在しない場合
+            console.log('No prefs file found');
             showSetupView();
         }
     });
@@ -299,30 +260,40 @@ function saveSetupPreferences(mode, customPath) {
 
     if (mode === 'default') {
         csInterface.evalScript('Folder.myDocuments.fsName', function(docPath) {
-            const folderPath = docPath + '/MemoNotes';
+            // ★ここでパスを統一
+            const folderPath = docPath.replace(/\\/g, '/') + '/MemoNotes';
             dataFolderPath = folderPath;
             
             const prefs = {
                 setupCompleted: true,
-                mode: 'default',
+                storageMode: 'default',
                 dataFolderPath: folderPath,
                 settings: settings
             };
 
             savePrefsFile(prefs);
-            showMainView();
+            
+            setTimeout(function() {
+                showMainView();
+            }, 500);
         });
     } else {
-        dataFolderPath = customPath;
+        // ★カスタムパスも統一
+        const folderPath = customPath.replace(/\\/g, '/');
+        dataFolderPath = folderPath;
+        
         const prefs = {
             setupCompleted: true,
-            mode: 'custom',
-            dataFolderPath: customPath,
+            storageMode: 'custom',
+            dataFolderPath: folderPath,
             settings: settings
         };
 
         savePrefsFile(prefs);
-        showMainView();
+        
+        setTimeout(function() {
+            showMainView();
+        }, 500);
     }
 }
 
@@ -331,29 +302,13 @@ function savePrefsFile(prefs) {
     if (typeof CSInterface === 'undefined') return;
 
     const csInterface = new CSInterface();
-    // 手動でバックスラッシュを増やしすぎないよう、JSON.stringifyの結果をそのまま安全に渡す
+    const extensionPath = csInterface.getSystemPath('extension');
     const jsonStr = JSON.stringify(prefs);
     
-    // ExtendScriptに渡す際に、文字列リテラルとして壊れないよう最小限のエスケープを施す
-    const encodedJson = encodeURI(jsonStr); 
-
     csInterface.evalScript(`
-        (function() {
-            try {
-                var prefsFile = new File(Folder.userData + "/MemoNotesPrefs.json");
-                prefsFile.encoding = "UTF-8";
-                prefsFile.open("w");
-                // decodeURIを使用して元に戻してから保存
-                prefsFile.write(decodeURI("${encodedJson}"));
-                prefsFile.close();
-                return "success";
-            } catch(e) {
-                return "error: " + e.toString();
-            }
-        })()
-    `, function(result) {
-        console.log('Prefs save result:', result);
-    });
+        $.evalFile("${extensionPath}/file-utils.jsx");
+        writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${jsonStr.replace(/'/g, "\\'")}');
+    `);
 }
 
 // データフォルダの初期化
@@ -384,24 +339,11 @@ function readFromFile(filename, callback) {
     }
 
     const csInterface = new CSInterface();
-    const safePath = (dataFolderPath + '/' + filename).replace(/\\/g, '/');
+    const extensionPath = csInterface.getSystemPath('extension');
     
     csInterface.evalScript(`
-        (function() {
-            try {
-                var file = new File("${safePath}");
-                if (file.exists) {
-                    file.encoding = "UTF-8";
-                    file.open("r");
-                    var content = file.read();
-                    file.close();
-                    return content;
-                }
-                return null;
-            } catch(e) {
-                return null;
-            }
-        })()
+        $.evalFile("${extensionPath}/file-utils.jsx");
+        readJSONFile("${dataFolderPath.replace(/\\/g, '/')}", "${filename}");
     `, function(result) {
         if (result && result !== 'null' && result !== 'undefined') {
             try {
@@ -422,22 +364,12 @@ function writeToFile(filename, data) {
     }
 
     const csInterface = new CSInterface();
-    const safePath = (dataFolderPath + '/' + filename).replace(/\\/g, '/');
-    const jsonStr = JSON.stringify(data).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+    const extensionPath = csInterface.getSystemPath('extension');
+    const jsonStr = JSON.stringify(data);
     
     csInterface.evalScript(`
-        (function() {
-            try {
-                var file = new File("${safePath}");
-                file.encoding = "UTF-8";
-                file.open("w");
-                file.write("${jsonStr}");
-                file.close();
-                return "success";
-            } catch(e) {
-                return "error: " + e.toString();
-            }
-        })()
+        $.evalFile("${extensionPath}/file-utils.jsx");
+        writeJSONFile("${dataFolderPath.replace(/\\/g, '/')}", "${filename}", '${jsonStr.replace(/'/g, "\\'")}');
     `);
 }
 
@@ -860,7 +792,7 @@ function openSettingsWindow() {
     
     csInterface.evalScript(`
         (function() {
-            var prefsFile = new File(Folder.userData + "/MemoNotesPrefs.json");
+            var prefsFile = new File(Folder.myDocuments + "/MemoNotes/settings.json");
             if (prefsFile.exists) {
                 prefsFile.open("r");
                 var content = prefsFile.read();
