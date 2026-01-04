@@ -30,6 +30,12 @@ function init() {
     checkSetupStatus();
 }
 
+function escapeForExtendScript(str) {
+    return str
+        .replace(/\\/g, '/')
+        .replace(/'/g, "\\'");
+}
+
 // セットアップ状態チェック
 function checkSetupStatus() {
     console.log('checkSetupStatus called');
@@ -257,44 +263,60 @@ function saveSetupPreferences(mode, customPath) {
     }
 
     const csInterface = new CSInterface();
+    const extensionPath = csInterface.getSystemPath('extension');
 
-    if (mode === 'default') {
-        csInterface.evalScript('Folder.myDocuments.fsName', function(docPath) {
-            // ★ここでパスを統一
-            const folderPath = docPath.replace(/\\/g, '/') + '/MemoNotes';
+    // ★既存の設定を読み込んでからマージ
+    csInterface.evalScript(`
+        $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
+        readJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json");
+    `, function(existingData) {
+        let prefs = {};
+        
+        // 既存データがあればパース
+        if (existingData && existingData !== 'null') {
+            try {
+                prefs = JSON.parse(existingData);
+            } catch(e) {
+                console.error('Failed to parse existing settings:', e);
+            }
+        }
+
+        if (mode === 'default') {
+            csInterface.evalScript('Folder.myDocuments.fsName', function(docPath) {
+                const folderPath = docPath.replace(/\\/g, '/') + '/MemoNotes';
+                dataFolderPath = folderPath;
+                
+                // ★既存データを保持してマージ
+                prefs.setupCompleted = true;
+                prefs.storageMode = 'default';
+                prefs.dataFolderPath = folderPath;
+                prefs.settings = settings;
+                // noteCounts等は保持される
+
+                savePrefsFile(prefs);
+                
+                setTimeout(function() {
+                    showMainView();
+                }, 500);
+            });
+        } else {
+            const folderPath = customPath.replace(/\\/g, '/');
             dataFolderPath = folderPath;
             
-            const prefs = {
-                setupCompleted: true,
-                storageMode: 'default',
-                dataFolderPath: folderPath,
-                settings: settings
-            };
+            // ★既存データを保持してマージ
+            prefs.setupCompleted = true;
+            prefs.storageMode = 'custom';
+            prefs.dataFolderPath = folderPath;
+            prefs.settings = settings;
+            // noteCounts等は保持される
 
             savePrefsFile(prefs);
             
             setTimeout(function() {
                 showMainView();
             }, 500);
-        });
-    } else {
-        // ★カスタムパスも統一
-        const folderPath = customPath.replace(/\\/g, '/');
-        dataFolderPath = folderPath;
-        
-        const prefs = {
-            setupCompleted: true,
-            storageMode: 'custom',
-            dataFolderPath: folderPath,
-            settings: settings
-        };
-
-        savePrefsFile(prefs);
-        
-        setTimeout(function() {
-            showMainView();
-        }, 500);
-    }
+        }
+    });
 }
 
 // 設定ファイルを保存
@@ -306,19 +328,25 @@ function savePrefsFile(prefs) {
     const jsonStr = JSON.stringify(prefs);
     
     csInterface.evalScript(`
-        $.evalFile("${extensionPath}/file-utils.jsx");
-        writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${jsonStr.replace(/'/g, "\\'")}');
+        $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
+        writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${escapeForExtendScript(jsonStr)}');
     `);
 }
 
 // データフォルダの初期化
 function initDataFolder() {
-    if (!dataFolderPath || typeof CSInterface === 'undefined') {
+    if (!dataFolderPath) {
+        console.warn('dataFolderPath is not set');
+        return;
+    }
+    
+    if (typeof CSInterface === 'undefined') {
+        console.warn('CSInterface is undefined, skipping folder creation');
         return;
     }
 
     const csInterface = new CSInterface();
-    const safePath = dataFolderPath.replace(/\\/g, '/');
+    const safePath = escapeForExtendScript(dataFolderPath);
     
     csInterface.evalScript(`
         (function() {
@@ -333,22 +361,32 @@ function initDataFolder() {
 
 // ファイルから読み込み
 function readFromFile(filename, callback) {
-    if (!dataFolderPath || typeof CSInterface === 'undefined') {
+    if (!dataFolderPath) {
+        console.warn('dataFolderPath is not set');
+        callback(null);
+        return;
+    }
+    
+    if (typeof CSInterface === 'undefined') {
+        console.warn('CSInterface is undefined');
         callback(null);
         return;
     }
 
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
+    const safePath = escapeForExtendScript(dataFolderPath);
+    const safeFilename = escapeForExtendScript(filename);
     
     csInterface.evalScript(`
-        $.evalFile("${extensionPath}/file-utils.jsx");
-        readJSONFile("${dataFolderPath.replace(/\\/g, '/')}", "${filename}");
+        $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
+        readJSONFile("${safePath}", "${safeFilename}");
     `, function(result) {
         if (result && result !== 'null' && result !== 'undefined') {
             try {
                 callback(JSON.parse(result));
             } catch (e) {
+                console.error('Failed to parse JSON from file:', e);
                 callback(null);
             }
         } else {
@@ -359,17 +397,26 @@ function readFromFile(filename, callback) {
 
 // ファイルに保存
 function writeToFile(filename, data) {
-    if (!dataFolderPath || typeof CSInterface === 'undefined') {
+    if (!dataFolderPath) {
+        console.warn('dataFolderPath is not set');
+        return;
+    }
+    
+    if (typeof CSInterface === 'undefined') {
+        console.warn('CSInterface is undefined');
         return;
     }
 
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
     const jsonStr = JSON.stringify(data);
+    const safePath = escapeForExtendScript(dataFolderPath);
+    const safeFilename = escapeForExtendScript(filename);
+    const safeJson = escapeForExtendScript(jsonStr);
     
     csInterface.evalScript(`
-        $.evalFile("${extensionPath}/file-utils.jsx");
-        writeJSONFile("${dataFolderPath.replace(/\\/g, '/')}", "${filename}", '${jsonStr.replace(/'/g, "\\'")}');
+        $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
+        writeJSONFile("${safePath}", "${safeFilename}", '${safeJson}');
     `);
 }
 
@@ -819,6 +866,10 @@ function openSettingsWindow() {
 
 // イベントリスナーの設定
 function setupEventListeners() {
+    
+    if (eventListenersSetup) return;
+    eventListenersSetup = true;
+
     // メインボタン
     document.getElementById('newNoteBtn').addEventListener('click', newNote);
     document.getElementById('searchBtn').addEventListener('click', toggleSearch);

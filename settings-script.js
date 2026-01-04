@@ -20,6 +20,13 @@ function init() {
     setupEventListeners();
 }
 
+// 冒頭に追加
+function escapeForExtendScript(str) {
+    return str
+        .replace(/\\/g, '/')
+        .replace(/'/g, "\\'");
+}
+
 // 設定を読み込み
 function loadSettings() {
     if (typeof CSInterface === 'undefined') {
@@ -43,19 +50,15 @@ function loadSettings() {
     `, function(result) {
         if (result && result !== 'null') {
             try {
-                // 【重要】Windowsパスの \ を / に置換してパースエラーを防ぐ
-                var sanitizedResult = result.replace(/\\/g, "/");
-                const prefs = JSON.parse(sanitizedResult);
+                const prefs = JSON.parse(result);
                 
-                // dataFolderPathの取得（settings.htmlでの変数名に合わせて修正）
-                // prefs.customPath または prefs.dataFolderPath
-                dataFolderPath = prefs.customPath || prefs.dataFolderPath || ''; 
+                // ★変数名を統一
+                dataFolderPath = prefs.dataFolderPath || '';
                 
                 if (prefs.settings) {
                     settings = Object.assign(settings, prefs.settings);
                 }
                 
-                // メモ数を取得
                 if (prefs.noteCounts) {
                     globalNotesCount = prefs.noteCounts.global || 0;
                     projectNotesCount = prefs.noteCounts.project || 0;
@@ -74,11 +77,12 @@ function loadSettings() {
 function loadSettingsToUI() {
     // ストレージモード
     const storageMode = settings.storageMode || 'default';
-    document.querySelector(`input[name="storage-mode"][value="${storageMode}"]`).checked = true;
+    const modeRadio = document.querySelector(`input[name="storage-mode"][value="${storageMode}"]`);
+    if (modeRadio) modeRadio.checked = true;
     
     // カスタムパス表示
-    if (settings.customPath) {
-        document.getElementById('custom-path-display').textContent = settings.customPath;
+    if (dataFolderPath) {
+        document.getElementById('custom-path-display').textContent = dataFolderPath;
     }
     
     // フォントサイズ
@@ -104,7 +108,6 @@ function loadSettingsToUI() {
 }
 
 // 設定を保存
-// 設定を保存
 function saveSettings() {
     // UIから設定値を取得
     settings.noteFontSize = parseInt(document.getElementById('note-font-size').value);
@@ -123,7 +126,7 @@ function saveSettings() {
         
         // ★既存の設定ファイルを読み込む
         csInterface.evalScript(`
-            $.evalFile("${extensionPath}/file-utils.jsx");
+            $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
             readJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json");
         `, function(result) {
             let prefs = {};
@@ -142,27 +145,35 @@ function saveSettings() {
                 global: globalNotesCount,
                 project: projectNotesCount
             };
-            // setupCompletedとdataFolderPathは保持
+            // setupCompleted と dataFolderPath は保持される
             
-            savePrefsFile(prefs);
+            // ★保存完了を待ってから閉じる
+            savePrefsFile(prefs, function() {
+                setTimeout(closeWindow, 300);
+            });
         });
+    } else {
+        closeWindow();
     }
-    
-    closeWindow();
 }
 
 // 設定ファイルを保存
-function savePrefsFile(prefs) {
-    if (typeof CSInterface === 'undefined') return;
+function savePrefsFile(prefs, callback) {
+    if (typeof CSInterface === 'undefined') {
+        if (callback) callback();
+        return;
+    }
 
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
     const jsonStr = JSON.stringify(prefs);
     
     csInterface.evalScript(`
-        $.evalFile("${extensionPath}/file-utils.jsx");
-        writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${jsonStr.replace(/'/g, "\\'")}');
-    `);
+        $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
+        writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${escapeForExtendScript(jsonStr)}');
+    `, function() {
+        if (callback) callback();
+    });
 }
 
 // 保存先フォルダを変更
@@ -216,49 +227,44 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             const result = stdout.trim();
             
             if (result && result.length > 0 && result !== 'null') {
-                settings.customPath = result;
-                document.getElementById('custom-path-display').textContent = result;
+                const safePath = result.replace(/\\/g, '/'); // ★パスを統一
+                settings.customPath = safePath;
+                document.getElementById('custom-path-display').textContent = safePath;
                 document.querySelector('input[name="storage-mode"][value="custom"]').checked = true;
                 
                 // データフォルダパスを更新
-                dataFolderPath = result;
+                dataFolderPath = safePath;
                 
                 // 設定を保存
-                if (typeof CSInterface !== 'undefined') {
-                    const csInterface = new CSInterface();
-                    csInterface.evalScript(`
-                        (function() {
-                            var prefsFile = new File(Folder.myDocuments + "/MemoNotes/settings.json");
-                            if (prefsFile.exists) {
-                                prefsFile.open("r");
-                                var content = prefsFile.read();
-                                prefsFile.close();
-                                return content;
-                            }
-                            return null;
-                        })()
-                    `, function(prefResult) {
-                        let prefs = {};
-                        if (prefResult && prefResult !== 'null') {
-                            try {
-                                prefs = JSON.parse(prefResult);
-                            } catch(e) {}
-                        }
-                        
-                        prefs.mode = 'custom';
-                        prefs.dataFolderPath = result;
-                        prefs.settings = settings;
-                        savePrefsFile(prefs);
-                        
-                        document.getElementById('current-storage-path').textContent = result;
-                    });
-                }
+                const csInterface = new CSInterface();
+                const extensionPath = csInterface.getSystemPath('extension');
                 
-                alert('保存先フォルダを変更しました。変更を反映するには拡張機能を再起動してください。');
+                csInterface.evalScript(`
+                    $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
+                    readJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json");
+                `, function(prefResult) {
+                    let prefs = {};
+                    if (prefResult && prefResult !== 'null') {
+                        try {
+                            prefs = JSON.parse(prefResult);
+                        } catch(e) {}
+                    }
+                    
+                    prefs.storageMode = 'custom';
+                    prefs.dataFolderPath = safePath; // ★エスケープ済みパスを使用
+                    prefs.settings = settings;
+                    
+                    savePrefsFile(prefs, function() {
+                        document.getElementById('current-storage-path').textContent = safePath;
+                        alert('保存先フォルダを変更しました。変更を反映するには拡張機能を再起動してください。');
+                    });
+                });
             }
         });
         
     } catch(nodeError) {
+        console.error('Node.js method failed:', nodeError);
+        
         // フォールバック
         const csInterface = new CSInterface();
         csInterface.evalScript(`
@@ -275,14 +281,35 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             })()
         `, function(result) {
             if (result && result !== 'null' && result !== 'undefined' && !result.startsWith('error:')) {
-                settings.customPath = result;
-                document.getElementById('custom-path-display').textContent = result;
+                const safePath = result.replace(/\\/g, '/'); // ★パスを統一
+                settings.customPath = safePath;
+                document.getElementById('custom-path-display').textContent = safePath;
                 document.querySelector('input[name="storage-mode"][value="custom"]').checked = true;
                 
-                dataFolderPath = result;
-                document.getElementById('current-storage-path').textContent = result;
+                dataFolderPath = safePath;
+                document.getElementById('current-storage-path').textContent = safePath;
                 
-                alert('保存先フォルダを変更しました。変更を反映するには拡張機能を再起動してください。');
+                // ★設定をファイルに保存
+                const extensionPath = csInterface.getSystemPath('extension');
+                csInterface.evalScript(`
+                    $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
+                    readJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json");
+                `, function(prefResult) {
+                    let prefs = {};
+                    if (prefResult && prefResult !== 'null') {
+                        try {
+                            prefs = JSON.parse(prefResult);
+                        } catch(e) {}
+                    }
+                    
+                    prefs.storageMode = 'custom';
+                    prefs.dataFolderPath = safePath;
+                    prefs.settings = settings;
+                    
+                    savePrefsFile(prefs, function() {
+                        alert('保存先フォルダを変更しました。変更を反映するには拡張機能を再起動してください。');
+                    });
+                });
             }
         });
     }
@@ -296,7 +323,7 @@ function openDataFolder() {
     }
     
     const csInterface = new CSInterface();
-    const safePath = dataFolderPath.replace(/\\/g, '/');
+    const safePath = escapeForExtendScript(dataFolderPath);
     
     csInterface.evalScript(`
         (function() {
@@ -313,7 +340,7 @@ function openDataFolder() {
         })()
     `, function(result) {
         if (result !== 'success') {
-            alert('フォルダを開けませんでした');
+            alert('フォルダを開けませんでした: ' + result);
         }
     });
 }
