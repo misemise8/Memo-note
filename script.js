@@ -834,6 +834,7 @@ function switchScope(scope) {
 }
 
 // 設定ウィンドウを開く
+// 設定ウィンドウを開く
 function openSettingsWindow() {
     if (typeof CSInterface === 'undefined') {
         alert('CSInterfaceが利用できません');
@@ -842,16 +843,18 @@ function openSettingsWindow() {
 
     const csInterface = new CSInterface();
     
-    // メモ数をカウントして設定ファイルに保存
+    // メモ数をカウント
     const noteCounts = {
         global: globalNotes.length,
         project: projectNotes.length
     };
     
+    // ★★★ 設定ファイルを読み込んで更新してから開く ★★★
     csInterface.evalScript(`
         (function() {
             var prefsFile = new File(Folder.myDocuments + "/MemoNotes/settings.json");
             if (prefsFile.exists) {
+                prefsFile.encoding = "UTF-8";
                 prefsFile.open("r");
                 var content = prefsFile.read();
                 prefsFile.close();
@@ -863,15 +866,28 @@ function openSettingsWindow() {
         let prefs = {};
         if (result && result !== 'null') {
             try {
-                prefs = JSON.parse(result);
-            } catch(e) {}
+                // ★★★ バックスラッシュを置換してからパース ★★★
+                const sanitized = result.replace(/\\/g, '/');
+                prefs = JSON.parse(sanitized);
+            } catch(e) {
+                console.error('Failed to parse settings:', e);
+            }
         }
         
+        // メモ数を更新
         prefs.noteCounts = noteCounts;
-        savePrefsFile(prefs);
         
-        // 設定ウィンドウを開く
-        csInterface.requestOpenExtension('com.yourname.memonotes.settings', '');
+        // ★★★ 保存が完了してから設定ウィンドウを開く ★★★
+        const extensionPath = csInterface.getSystemPath('extension');
+        const jsonStr = JSON.stringify(prefs);
+        
+        csInterface.evalScript(`
+            $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
+            writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${escapeForExtendScript(jsonStr)}');
+        `, function() {
+            // 保存完了後に設定ウィンドウを開く
+            csInterface.requestOpenExtension('com.yourname.memonotes.settings', '');
+        });
     });
 }
 

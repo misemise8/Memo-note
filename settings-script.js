@@ -50,11 +50,9 @@ function loadSettings() {
     `, function(result) {
         if (result && result !== 'null') {
             try {
-                // 【修正】ここでもバックスラッシュを置換
                 const sanitizedResult = result.replace(/\\/g, "/");
                 const prefs = JSON.parse(sanitizedResult);
                 
-                // パスを正規化して読み込み
                 dataFolderPath = prefs.dataFolderPath ? prefs.dataFolderPath.replace(/\\/g, "/") : '';
                 
                 if (prefs.settings) {
@@ -69,11 +67,20 @@ function loadSettings() {
             } catch (e) {
                 console.error('Failed to parse prefs:', e);
             }
+        } else {
+            csInterface.evalScript('Folder.myDocuments.fsName + "/MemoNotes"', function(defaultPath) {
+                if (defaultPath) {
+                    dataFolderPath = defaultPath.replace(/\\/g, '/');
+                }
+                loadSettingsToUI();
+            });
+            return; // ここで return して、下の loadSettingsToUI() を実行しない
         }
         
         loadSettingsToUI();
     });
 }
+
 // 設定をUIに反映
 function loadSettingsToUI() {
     // ストレージモード
@@ -329,64 +336,63 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
     }
 }
 
-// データフォルダを開く
+// データフォルダを開く（最終修正版）
 function openDataFolder() {
     if (typeof CSInterface === 'undefined') {
-        alert('データフォルダが設定されていません');
+        alert('CSInterfaceが利用できません');
         return;
     }
     
     const csInterface = new CSInterface();
     
-    // 変数が空の場合、設定ファイルから再読み込みを試みる
-    if (!dataFolderPath) {
-        csInterface.evalScript(`
-            (function() {
-                var prefsFile = new File(Folder.myDocuments + "/MemoNotes/settings.json");
-                if (prefsFile.exists) {
-                    prefsFile.encoding = "UTF-8";
-                    prefsFile.open("r");
-                    var content = prefsFile.read();
-                    prefsFile.close();
-                    return content;
-                }
-                return null;
-            })()
-        `, function(result) {
-            if (result && result !== 'null') {
-                try {
-                    // 【重要】ここでもバックスラッシュを置換
-                    const sanitizedResult = result.replace(/\\/g, "/");
-                    const prefs = JSON.parse(sanitizedResult);
-                    
-                    // パスを取得し、再度置換して確実に安全にする
-                    let path = prefs.dataFolderPath || '';
-                    path = path.replace(/\\/g, "/");
-                    
-                    if (path) {
-                        dataFolderPath = path; // グローバル変数も更新
-                        openDataFolderWithPath(path);
-                    } else {
-                        alert('データフォルダが設定されていません');
-                    }
-                } catch(e) {
-                    console.error('Failed to parse settings:', e);
-                    alert('設定ファイルの読み込みに失敗しました');
-                }
-            } else {
-                alert('データフォルダが設定されていません');
-            }
-        });
+    // dataFolderPathがメモリにあれば即座に開く
+    if (dataFolderPath && dataFolderPath.length > 0) {
+        openDataFolderWithPath(dataFolderPath);
         return;
     }
     
-    // すでに変数がある場合も、念のため置換してから渡す
-    openDataFolderWithPath(dataFolderPath.replace(/\\/g, "/"));
+    // メモリになければ、index.html (メインウィンドウ) に問い合わせる
+    // メインウィンドウは既に設定を読み込んでいるはず
+    csInterface.evalScript(`
+        (function() {
+            // デフォルトパスを使う（推奨設定の場合）
+            var defaultPath = Folder.myDocuments.fsName + "/MemoNotes";
+            
+            // 設定ファイルを読んでカスタムパスがあればそれを使う
+            try {
+                var settingsFile = new File(Folder.myDocuments.fsName + "/MemoNotes/settings.json");
+                if (settingsFile.exists) {
+                    settingsFile.encoding = "UTF-8";
+                    settingsFile.open("r");
+                    var content = settingsFile.read();
+                    settingsFile.close();
+                    
+                    var prefs = eval("(" + content + ")");
+                    if (prefs.dataFolderPath) {
+                        return prefs.dataFolderPath;
+                    }
+                }
+            } catch(e) {
+                // エラーが出てもデフォルトパスで続行
+            }
+            
+            return defaultPath;
+        })()
+    `, function(result) {
+        if (result && result !== 'null' && result !== 'undefined') {
+            const path = result.replace(/\\/g, '/');
+            dataFolderPath = path; // グローバル変数も更新
+            openDataFolderWithPath(path);
+        } else {
+            alert('データフォルダのパスを取得できませんでした');
+        }
+    });
 }
 
 function openDataFolderWithPath(path) {
     const csInterface = new CSInterface();
-    const safePath = escapeForExtendScript(path);
+    const normalizedPath = path.replace(/\\/g, '/');
+    const safePath = escapeForExtendScript(normalizedPath);
     
     csInterface.evalScript(`
         (function() {
@@ -395,18 +401,20 @@ function openDataFolderWithPath(path) {
                 if (folder.exists) {
                     folder.execute();
                     return "success";
+                } else {
+                    return "folder not found: " + folder.fsName;
                 }
-                return "folder not found";
             } catch(e) {
                 return "error: " + e.toString();
             }
         })()
     `, function(result) {
         if (result !== 'success') {
-            alert('フォルダを開けませんでした: ' + result);
+            alert('フォルダを開けませんでした:\n' + result);
         }
     });
 }
+
 
 // ウィンドウを閉じる
 function closeWindow() {
