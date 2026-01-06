@@ -39,7 +39,7 @@ function loadSettings() {
         (function() {
             var prefsFile = new File(Folder.myDocuments + "/MemoNotes/settings.json");
             if (prefsFile.exists) {
-                prefsFile.encoding = "UTF-8"; // エンコードを明示的に指定
+                prefsFile.encoding = "UTF-8";
                 prefsFile.open("r");
                 var content = prefsFile.read();
                 prefsFile.close();
@@ -50,9 +50,12 @@ function loadSettings() {
     `, function(result) {
         if (result && result !== 'null') {
             try {
-                const prefs = JSON.parse(result);
-            
-                dataFolderPath = prefs.dataFolderPath || '';
+                // 【修正】ここでもバックスラッシュを置換
+                const sanitizedResult = result.replace(/\\/g, "/");
+                const prefs = JSON.parse(sanitizedResult);
+                
+                // パスを正規化して読み込み
+                dataFolderPath = prefs.dataFolderPath ? prefs.dataFolderPath.replace(/\\/g, "/") : '';
                 
                 if (prefs.settings) {
                     settings = Object.assign(settings, prefs.settings);
@@ -71,7 +74,6 @@ function loadSettings() {
         loadSettingsToUI();
     });
 }
-
 // 設定をUIに反映
 function loadSettingsToUI() {
     // ストレージモード
@@ -130,9 +132,10 @@ function saveSettings() {
         `, function(result) {
             let prefs = {};
             
+            // 【重要】読み込み時にバックスラッシュを置換してエラーを防ぐ
             if (result && result !== "null") {
                 try {
-                    prefs = JSON.parse(result);
+                    prefs = JSON.parse(result.replace(/\\/g, "/"));
                 } catch(e) {
                     console.error("Parse error:", e);
                 }
@@ -144,7 +147,14 @@ function saveSettings() {
                 global: globalNotesCount,
                 project: projectNotesCount
             };
-            // setupCompleted と dataFolderPath は保持される
+
+            // 【最重要】もし prefs の読み込みに失敗していても、
+            // 現在の変数が残っていれば強制的に書き込んで「初期化」を防ぐ
+            if (!prefs.dataFolderPath && dataFolderPath) {
+                prefs.dataFolderPath = dataFolderPath.replace(/\\/g, "/");
+            }
+            // セットアップ完了フラグを確実に立てる
+            prefs.setupCompleted = true;
 
             // 保存完了を待ってから閉じる
             savePrefsFile(prefs, function() {
@@ -226,14 +236,16 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             const result = stdout.trim();
             
             if (result && result.length > 0 && result !== 'null') {
-                const safePath = result.replace(/\\/g, '/'); 
+                // 【修正】取得したパスを即座に正規化
+                const safePath = result.trim().replace(/\\/g, '/'); 
+                
                 settings.customPath = safePath;
+                dataFolderPath = safePath; // グローバル変数を更新
+                
                 document.getElementById('custom-path-display').textContent = safePath;
                 document.querySelector('input[name="storage-mode"][value="custom"]').checked = true;
-                
-                // データフォルダパスを更新
-                dataFolderPath = safePath;
-                
+                document.getElementById('current-storage-path').textContent = safePath; // 表示も即時更新
+
                 // 設定を保存
                 const csInterface = new CSInterface();
                 const extensionPath = csInterface.getSystemPath('extension');
@@ -245,16 +257,16 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                     let prefs = {};
                     if (prefResult && prefResult !== 'null') {
                         try {
-                            prefs = JSON.parse(prefResult);
+                            prefs = JSON.parse(prefResult.replace(/\\/g, "/"));
                         } catch(e) {}
                     }
                     
                     prefs.storageMode = 'custom';
-                    prefs.dataFolderPath = safePath;
+                    prefs.dataFolderPath = safePath; // 正規化したパスを保存
+                    prefs.setupCompleted = true;
                     prefs.settings = settings;
                     
                     savePrefsFile(prefs, function() {
-                        document.getElementById('current-storage-path').textContent = safePath;
                         alert('保存先フォルダを変更しました。変更を反映するには拡張機能を再起動してください。');
                     });
                 });
@@ -280,7 +292,10 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             })()
         `, function(result) {
             if (result && result !== 'null' && result !== 'undefined' && !result.startsWith('error:')) {
+                
+                // 【修正】ここも同様に強制的にスラッシュに置換します
                 const safePath = result.replace(/\\/g, '/'); 
+                
                 settings.customPath = safePath;
                 document.getElementById('custom-path-display').textContent = safePath;
                 document.querySelector('input[name="storage-mode"][value="custom"]').checked = true;
@@ -316,13 +331,62 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
 
 // データフォルダを開く
 function openDataFolder() {
-    if (!dataFolderPath || typeof CSInterface === 'undefined') {
+    if (typeof CSInterface === 'undefined') {
         alert('データフォルダが設定されていません');
         return;
     }
     
     const csInterface = new CSInterface();
-    const safePath = escapeForExtendScript(dataFolderPath);
+    
+    // 変数が空の場合、設定ファイルから再読み込みを試みる
+    if (!dataFolderPath) {
+        csInterface.evalScript(`
+            (function() {
+                var prefsFile = new File(Folder.myDocuments + "/MemoNotes/settings.json");
+                if (prefsFile.exists) {
+                    prefsFile.encoding = "UTF-8";
+                    prefsFile.open("r");
+                    var content = prefsFile.read();
+                    prefsFile.close();
+                    return content;
+                }
+                return null;
+            })()
+        `, function(result) {
+            if (result && result !== 'null') {
+                try {
+                    // 【重要】ここでもバックスラッシュを置換
+                    const sanitizedResult = result.replace(/\\/g, "/");
+                    const prefs = JSON.parse(sanitizedResult);
+                    
+                    // パスを取得し、再度置換して確実に安全にする
+                    let path = prefs.dataFolderPath || '';
+                    path = path.replace(/\\/g, "/");
+                    
+                    if (path) {
+                        dataFolderPath = path; // グローバル変数も更新
+                        openDataFolderWithPath(path);
+                    } else {
+                        alert('データフォルダが設定されていません');
+                    }
+                } catch(e) {
+                    console.error('Failed to parse settings:', e);
+                    alert('設定ファイルの読み込みに失敗しました');
+                }
+            } else {
+                alert('データフォルダが設定されていません');
+            }
+        });
+        return;
+    }
+    
+    // すでに変数がある場合も、念のため置換してから渡す
+    openDataFolderWithPath(dataFolderPath.replace(/\\/g, "/"));
+}
+
+function openDataFolderWithPath(path) {
+    const csInterface = new CSInterface();
+    const safePath = escapeForExtendScript(path);
     
     csInterface.evalScript(`
         (function() {

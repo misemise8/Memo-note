@@ -38,6 +38,8 @@ function escapeForExtendScript(str) {
 }
 
 // セットアップ状態チェック
+// script.js の checkSetupStatus を修正
+
 function checkSetupStatus() {
     console.log('checkSetupStatus called');
     
@@ -50,6 +52,7 @@ function checkSetupStatus() {
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
     
+    // 設定ファイルの読み込み
     csInterface.evalScript(`
         $.evalFile("${extensionPath}/file-utils.jsx");
         readJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json");
@@ -58,27 +61,31 @@ function checkSetupStatus() {
         
         if (result && result !== 'null') {
             try {
-                const prefs = JSON.parse(result);
+                // 【重要】Windowsのバックスラッシュをスラッシュに置換してからパースする
+                // これを行わないと JSON.parse でエラーになり、設定が読み込めない
+                const sanitizedResult = result.replace(/\\/g, "/");
+                const prefs = JSON.parse(sanitizedResult);
                 
                 console.log('Parsed prefs:', prefs);
-                console.log('setupCompleted flag:', prefs.setupCompleted);
                 
-                if (prefs.setupCompleted === true) {
-                    dataFolderPath = prefs.dataFolderPath;
+                if (prefs.setupCompleted === true && prefs.dataFolderPath) {
+                    // パスも念のため正規化しておく
+                    dataFolderPath = prefs.dataFolderPath.replace(/\\/g, "/");
                     setupCompleted = true;
                     
                     if (prefs.settings) {
                         settings = Object.assign(settings, prefs.settings);
                     }
                     
-                    console.log('Showing main view');
+                    console.log('Showing main view. Path:', dataFolderPath);
                     showMainView();
                 } else {
-                    console.log('setupCompleted is false, showing setup');
+                    console.log('setupCompleted is false or path missing, showing setup');
                     showSetupView();
                 }
             } catch (e) {
                 console.error('Failed to parse prefs:', e);
+                // パースエラーが出た場合もセットアップ画面へ
                 showSetupView();
             }
         } else {
@@ -230,8 +237,11 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                 })()
             `, function(result) {
                 if (result && result !== 'null' && result !== 'undefined' && !result.startsWith('error:')) {
-                    selectedCustomPath = result;
-                    updatePathDisplay(result);
+                    
+                    const safePath = result.replace(/\\/g, '/');
+                    
+                    selectedCustomPath = safePath;
+                    updatePathDisplay(safePath);
                 }
             });
         }
