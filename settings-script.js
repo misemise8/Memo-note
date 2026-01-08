@@ -20,10 +20,18 @@ function init() {
     setupEventListeners();
 }
 
+// パス用のエスケープ（既存の関数）
 function escapeForExtendScript(str) {
     return str
         .replace(/\\/g, '/')
         .replace(/'/g, "\\'");
+}
+
+// JSONデータ用のエスケープ（新規追加）
+function escapeJsonForExtendScript(jsonStr) {
+    return jsonStr
+        .replace(/\\/g, "\\\\") // バックスラッシュを2重にする
+        .replace(/'/g, "\\'");  // シングルクォートをエスケープ
 }
 
 // 設定を読み込み
@@ -73,7 +81,7 @@ function loadSettings() {
                 }
                 loadSettingsToUI();
             });
-            return; // ここで return して、下の loadSettingsToUI() を実行しない
+            return;
         }
         
         loadSettingsToUI();
@@ -82,33 +90,27 @@ function loadSettings() {
 
 // 設定をUIに反映
 function loadSettingsToUI() {
-    // ストレージモード
     const storageMode = settings.storageMode || 'default';
     const modeRadio = document.querySelector(`input[name="storage-mode"][value="${storageMode}"]`);
     if (modeRadio) modeRadio.checked = true;
     
-    // カスタムパス表示
     if (dataFolderPath) {
         document.getElementById('custom-path-display').textContent = dataFolderPath;
     }
     
-    // フォントサイズ
     document.getElementById('note-font-size').value = settings.noteFontSize;
     document.getElementById('note-font-size-value').textContent = settings.noteFontSize + 'px';
     
     document.getElementById('editor-font-size').value = settings.editorFontSize;
     document.getElementById('editor-font-size-value').textContent = settings.editorFontSize + 'px';
     
-    // 行間
     document.getElementById('note-line-height').value = settings.noteLineHeight;
     document.getElementById('note-line-height-value').textContent = settings.noteLineHeight;
     
-    // チェックボックス
     document.getElementById('auto-save-enabled').checked = settings.autoSaveEnabled;
     document.getElementById('confirm-delete-enabled').checked = settings.confirmDeleteEnabled;
     document.getElementById('show-timestamp-enabled').checked = settings.showTimestampEnabled;
     
-    // データ情報
     document.getElementById('current-storage-path').textContent = dataFolderPath || '未設定';
     document.getElementById('global-notes-count').textContent = globalNotesCount;
     document.getElementById('project-notes-count').textContent = projectNotesCount;
@@ -116,7 +118,6 @@ function loadSettingsToUI() {
 
 // 設定を保存
 function saveSettings() {
-    // UIから設定値を取得
     settings.noteFontSize = parseInt(document.getElementById('note-font-size').value);
     settings.editorFontSize = parseInt(document.getElementById('editor-font-size').value);
     settings.noteLineHeight = parseFloat(document.getElementById('note-line-height').value);
@@ -131,14 +132,12 @@ function saveSettings() {
         const csInterface = new CSInterface();
         const extensionPath = csInterface.getSystemPath('extension');
         
-        // 既存の設定ファイルを読み込む
         csInterface.evalScript(`
             $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
             readJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json");
         `, function(result) {
             let prefs = {};
             
-            // 【重要】読み込み時にバックスラッシュを置換してエラーを防ぐ
             if (result && result !== "null") {
                 try {
                     prefs = JSON.parse(result.replace(/\\/g, "/"));
@@ -147,22 +146,17 @@ function saveSettings() {
                 }
             }
             
-            // 既存データを保持しつつ更新
             prefs.settings = settings;
             prefs.noteCounts = {
                 global: globalNotesCount,
                 project: projectNotesCount
             };
 
-            // 【最重要】もし prefs の読み込みに失敗していても、
-            // 現在の変数が残っていれば強制的に書き込んで「初期化」を防ぐ
             if (!prefs.dataFolderPath && dataFolderPath) {
                 prefs.dataFolderPath = dataFolderPath.replace(/\\/g, "/");
             }
-            // セットアップ完了フラグを確実に立てる
             prefs.setupCompleted = true;
 
-            // 保存完了を待ってから閉じる
             savePrefsFile(prefs, function() {
                 setTimeout(closeWindow, 300);
             });
@@ -173,10 +167,6 @@ function saveSettings() {
 }
 
 // 設定ファイルを保存
-function escapeJsonForExtendScript(jsonStr) {
-    return jsonStr.replace(/'/g, "\\'");
-}
-
 function savePrefsFile(prefs, callback) {
     if (typeof CSInterface === 'undefined') {
         if (callback) callback();
@@ -186,7 +176,8 @@ function savePrefsFile(prefs, callback) {
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
     const jsonStr = JSON.stringify(prefs);
-
+    
+    // 【重要修正】JSONデータ専用のエスケープを使用
     const safeJson = escapeJsonForExtendScript(jsonStr);
     
     csInterface.evalScript(`
@@ -204,7 +195,6 @@ function changeStoragePath() {
         return;
     }
 
-    // Node.jsを使ってフォルダ選択
     try {
         const exec = window.cep_node.require('child_process').exec;
         const fs = window.cep_node.require('fs');
@@ -248,17 +238,15 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             const result = stdout.trim();
             
             if (result && result.length > 0 && result !== 'null') {
-                // 【修正】取得したパスを即座に正規化
                 const safePath = result.trim().replace(/\\/g, '/'); 
                 
                 settings.customPath = safePath;
-                dataFolderPath = safePath; // グローバル変数を更新
+                dataFolderPath = safePath;
                 
                 document.getElementById('custom-path-display').textContent = safePath;
                 document.querySelector('input[name="storage-mode"][value="custom"]').checked = true;
-                document.getElementById('current-storage-path').textContent = safePath; // 表示も即時更新
+                document.getElementById('current-storage-path').textContent = safePath;
 
-                // 設定を保存
                 const csInterface = new CSInterface();
                 const extensionPath = csInterface.getSystemPath('extension');
                 
@@ -274,7 +262,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                     }
                     
                     prefs.storageMode = 'custom';
-                    prefs.dataFolderPath = safePath; // 正規化したパスを保存
+                    prefs.dataFolderPath = safePath;
                     prefs.setupCompleted = true;
                     prefs.settings = settings;
                     
@@ -288,7 +276,6 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
     } catch(nodeError) {
         console.error('Node.js method failed:', nodeError);
         
-        // フォールバック
         const csInterface = new CSInterface();
         csInterface.evalScript(`
             (function() {
@@ -304,8 +291,6 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             })()
         `, function(result) {
             if (result && result !== 'null' && result !== 'undefined' && !result.startsWith('error:')) {
-                
-                // 【修正】ここも同様に強制的にスラッシュに置換します
                 const safePath = result.replace(/\\/g, '/'); 
                 
                 settings.customPath = safePath;
@@ -314,7 +299,6 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                 
                 dataFolderPath = safePath;
                 document.getElementById('current-storage-path').textContent = safePath;
-                
                 
                 const extensionPath = csInterface.getSystemPath('extension');
                 csInterface.evalScript(`
@@ -341,7 +325,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
     }
 }
 
-// データフォルダを開く（最終修正版）
+// データフォルダを開く
 function openDataFolder() {
     if (typeof CSInterface === 'undefined') {
         alert('CSInterfaceが利用できません');
@@ -350,20 +334,14 @@ function openDataFolder() {
     
     const csInterface = new CSInterface();
     
-    // dataFolderPathがメモリにあれば即座に開く
     if (dataFolderPath && dataFolderPath.length > 0) {
         openDataFolderWithPath(dataFolderPath);
         return;
     }
     
-    // メモリになければ、index.html (メインウィンドウ) に問い合わせる
-    // メインウィンドウは既に設定を読み込んでいるはず
     csInterface.evalScript(`
         (function() {
-            // デフォルトパスを使う（推奨設定の場合）
             var defaultPath = Folder.myDocuments.fsName + "/MemoNotes";
-            
-            // 設定ファイルを読んでカスタムパスがあればそれを使う
             try {
                 var settingsFile = new File(Folder.myDocuments.fsName + "/MemoNotes/settings.json");
                 if (settingsFile.exists) {
@@ -377,16 +355,13 @@ function openDataFolder() {
                         return prefs.dataFolderPath;
                     }
                 }
-            } catch(e) {
-                // エラーが出てもデフォルトパスで続行
-            }
-            
+            } catch(e) {}
             return defaultPath;
         })()
     `, function(result) {
         if (result && result !== 'null' && result !== 'undefined') {
             const path = result.replace(/\\/g, '/');
-            dataFolderPath = path; // グローバル変数も更新
+            dataFolderPath = path;
             openDataFolderWithPath(path);
         } else {
             alert('データフォルダのパスを取得できませんでした');
@@ -420,7 +395,6 @@ function openDataFolderWithPath(path) {
     });
 }
 
-
 // ウィンドウを閉じる
 function closeWindow() {
     if (typeof CSInterface !== 'undefined') {
@@ -433,13 +407,9 @@ function closeWindow() {
 
 // イベントリスナーの設定
 function setupEventListeners() {
-    // 保存ボタン
     document.getElementById('save-btn').addEventListener('click', saveSettings);
-    
-    // キャンセルボタン
     document.getElementById('cancel-btn').addEventListener('click', closeWindow);
     
-    // スライダー
     document.getElementById('note-font-size').addEventListener('input', (e) => {
         document.getElementById('note-font-size-value').textContent = e.target.value + 'px';
     });
@@ -452,13 +422,9 @@ function setupEventListeners() {
         document.getElementById('note-line-height-value').textContent = e.target.value;
     });
     
-    // 保存先変更
     document.getElementById('change-path-btn').addEventListener('click', changeStoragePath);
-    
-    // データフォルダを開く
     document.getElementById('open-folder-btn').addEventListener('click', openDataFolder);
     
-    // キーボードショートカット
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeWindow();

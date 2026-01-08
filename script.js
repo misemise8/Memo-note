@@ -31,15 +31,19 @@ function init() {
     checkSetupStatus();
 }
 
+// パス用のエスケープ（バックスラッシュをスラッシュに変換）
+// ※これはファイルパス専用です。JSONデータには使用しないでください。
 function escapeForExtendScript(str) {
     return str
         .replace(/\\/g, '/')
         .replace(/'/g, "\\'");
 }
 
+// JSONデータ用のエスケープ（JSXに渡すためにバックスラッシュとシングルクォートをエスケープ）
 function escapeJsonForExtendScript(jsonStr) {
-    // JSONの中のシングルクォートだけエスケープ
-    return jsonStr.replace(/'/g, "\\'");
+    return jsonStr
+        .replace(/\\/g, "\\\\") // バックスラッシュを2重にする (\n -> \\n)
+        .replace(/'/g, "\\'");  // シングルクォートをエスケープ
 }
 
 // セットアップ状態チェック
@@ -64,15 +68,13 @@ function checkSetupStatus() {
         
         if (result && result !== 'null') {
             try {
-                // 【重要】Windowsのバックスラッシュをスラッシュに置換してからパースする
-                // これを行わないと JSON.parse でエラーになり、設定が読み込めない
+                // パス区切り文字の正規化
                 const sanitizedResult = result.replace(/\\/g, "/");
                 const prefs = JSON.parse(sanitizedResult);
                 
                 console.log('Parsed prefs:', prefs);
                 
                 if (prefs.setupCompleted === true && prefs.dataFolderPath) {
-                    // パスも念のため正規化しておく
                     dataFolderPath = prefs.dataFolderPath.replace(/\\/g, "/");
                     setupCompleted = true;
                     
@@ -88,7 +90,6 @@ function checkSetupStatus() {
                 }
             } catch (e) {
                 console.error('Failed to parse prefs:', e);
-                // パースエラーが出た場合もセットアップ画面へ
                 showSetupView();
             }
         } else {
@@ -163,14 +164,12 @@ function setupSetupViewListeners() {
             return;
         }
 
-        // Node.jsを使ってPowerShellを実行
         try {
             const exec = window.cep_node.require('child_process').exec;
             const fs = window.cep_node.require('fs');
             const path = window.cep_node.require('path');
             const os = window.cep_node.require('os');
             
-            // PowerShellスクリプト
             const psScript = `
 Add-Type -AssemblyName System.Windows.Forms
 [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
@@ -188,17 +187,14 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
 }
             `.trim();
             
-            // 一時ファイルを作成
             const tempDir = os.tmpdir();
             const psFilePath = path.join(tempDir, 'select_folder_explorer.ps1');
             
             fs.writeFileSync(psFilePath, psScript, 'utf8');
             
-            // PowerShellを実行
             const command = `powershell.exe -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File "${psFilePath}"`;
             
             exec(command, { encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-                // 一時ファイルを削除
                 try {
                     fs.unlinkSync(psFilePath);
                 } catch(e) {
@@ -207,7 +203,6 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                 
                 if (error) {
                     console.error('PowerShell execution error:', error);
-                    console.error('stderr:', stderr);
                     alert('フォルダの選択に失敗しました');
                     return;
                 }
@@ -217,14 +212,12 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                 if (result && result.length > 0 && result !== 'null') {
                     selectedCustomPath = result;
                     updatePathDisplay(result);
-                    console.log('Selected folder:', result);
                 }
             });
             
         } catch(nodeError) {
             console.error('Node.js method failed:', nodeError);
             
-            // フォールバック
             const csInterface = new CSInterface();
             csInterface.evalScript(`
                 (function() {
@@ -240,9 +233,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
                 })()
             `, function(result) {
                 if (result && result !== 'null' && result !== 'undefined' && !result.startsWith('error:')) {
-                    
                     const safePath = result.replace(/\\/g, '/');
-                    
                     selectedCustomPath = safePath;
                     updatePathDisplay(safePath);
                 }
@@ -279,14 +270,12 @@ function saveSetupPreferences(mode, customPath) {
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
 
-    // 既存の設定を読み込んでからマージ
     csInterface.evalScript(`
         $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
         readJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json");
     `, function(existingData) {
         let prefs = {};
         
-        // 既存データがあればパース
         if (existingData && existingData !== 'null') {
             try {
                 prefs = JSON.parse(existingData);
@@ -300,12 +289,10 @@ function saveSetupPreferences(mode, customPath) {
                 const folderPath = docPath.replace(/\\/g, '/') + '/MemoNotes';
                 dataFolderPath = folderPath;
                 
-                // 既存データを保持してマージ
                 prefs.setupCompleted = true;
                 prefs.storageMode = 'default';
                 prefs.dataFolderPath = folderPath;
                 prefs.settings = settings;
-                // noteCounts等は保持される
 
                 savePrefsFile(prefs);
                 
@@ -317,12 +304,10 @@ function saveSetupPreferences(mode, customPath) {
             const folderPath = customPath.replace(/\\/g, '/');
             dataFolderPath = folderPath;
             
-            // 既存データを保持してマージ
             prefs.setupCompleted = true;
             prefs.storageMode = 'custom';
             prefs.dataFolderPath = folderPath;
             prefs.settings = settings;
-            // noteCounts等は保持される
 
             savePrefsFile(prefs);
             
@@ -340,7 +325,8 @@ function savePrefsFile(prefs) {
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
     const jsonStr = JSON.stringify(prefs);
-
+    
+    // ここは設定JSONなので、安全なエスケープ処理を使用
     const safeJson = escapeJsonForExtendScript(jsonStr);
     
     csInterface.evalScript(`
@@ -357,7 +343,6 @@ function initDataFolder() {
     }
     
     if (typeof CSInterface === 'undefined') {
-        console.warn('CSInterface is undefined, skipping folder creation');
         return;
     }
 
@@ -400,6 +385,9 @@ function readFromFile(filename, callback) {
     `, function(result) {
         if (result && result !== 'null' && result !== 'undefined') {
             try {
+                // 読み込み時にパス区切り文字の問題が出ないようケア
+                // ただしデータそのものにバックスラッシュが含まれる場合(正規表現など)への影響を避けるため
+                // 単純な置換は行わずパースを試みる
                 callback(JSON.parse(result));
             } catch (e) {
                 console.error('Failed to parse JSON from file:', e);
@@ -425,11 +413,15 @@ function writeToFile(filename, data) {
 
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
+    
+    // JSON文字列を生成 (ここでは \n が含まれる)
     const jsonStr = JSON.stringify(data);
     
     const safePath = escapeForExtendScript(dataFolderPath);
     const safeFilename = escapeForExtendScript(filename);
     
+    // 【重要修正】ここで escapeForExtendScript を使うと \n が /n に置換されてしまう。
+    // 代わりにJSONデータ専用のエスケープ処理を使用する。
     const safeJson = escapeJsonForExtendScript(jsonStr);
     
     csInterface.evalScript(`
@@ -620,6 +612,7 @@ function saveCurrentNotes() {
         saveProjectNotes();
     }
 }
+
 // メモ一覧の描画
 function renderNotes(filter = '') {
     const notesList = document.getElementById('notesList');
@@ -653,6 +646,7 @@ function renderNotes(filter = '') {
         return;
     }
 
+    // 【重要修正】 style="white-space: pre-wrap;" を追加して改行を表示
     notesList.innerHTML = filteredNotes.map(note => `
         <div class="note-card" data-id="${note.id}">
             <div class="note-header">
@@ -671,7 +665,7 @@ function renderNotes(filter = '') {
                     </button>
                 </div>
             </div>
-            <div class="note-content">${escapeHtml(note.content.substring(0, 200))}${note.content.length > 200 ? '...' : ''}</div>
+            <div class="note-content" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(note.content.substring(0, 200))}${note.content.length > 200 ? '...' : ''}</div>
             ${note.tags.length > 0 ? note.tags.map(tag => `<span class="note-tag">${escapeHtml(tag)}</span>`).join('') : ''}
         </div>
     `).join('');
@@ -841,7 +835,6 @@ function switchScope(scope) {
 }
 
 // 設定ウィンドウを開く
-// 設定ウィンドウを開く
 function openSettingsWindow() {
     if (typeof CSInterface === 'undefined') {
         alert('CSInterfaceが利用できません');
@@ -856,7 +849,6 @@ function openSettingsWindow() {
         project: projectNotes.length
     };
     
-    // ★★★ 設定ファイルを読み込んで更新してから開く ★★★
     csInterface.evalScript(`
         (function() {
             var prefsFile = new File(Folder.myDocuments + "/MemoNotes/settings.json");
@@ -873,7 +865,6 @@ function openSettingsWindow() {
         let prefs = {};
         if (result && result !== 'null') {
             try {
-                // ★★★ バックスラッシュを置換してからパース ★★★
                 const sanitized = result.replace(/\\/g, '/');
                 prefs = JSON.parse(sanitized);
             } catch(e) {
@@ -881,18 +872,18 @@ function openSettingsWindow() {
             }
         }
         
-        // メモ数を更新
         prefs.noteCounts = noteCounts;
         
-        // ★★★ 保存が完了してから設定ウィンドウを開く ★★★
         const extensionPath = csInterface.getSystemPath('extension');
         const jsonStr = JSON.stringify(prefs);
         
+        // 【重要修正】ここも JSONデータ専用のエスケープを使用
+        const safeJson = escapeJsonForExtendScript(jsonStr);
+        
         csInterface.evalScript(`
             $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
-            writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${escapeForExtendScript(jsonStr)}');
+            writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${safeJson}');
         `, function() {
-            // 保存完了後に設定ウィンドウを開く
             csInterface.requestOpenExtension('com.yourname.memonotes.settings', '');
         });
     });
@@ -940,7 +931,6 @@ function setupEventListeners() {
         });
     });
 
-    
     // キーボードショートカット
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey || e.metaKey) {
@@ -955,12 +945,10 @@ function setupEventListeners() {
                 saveNote();
             } else if (e.key === ',') {
                 e.preventDefault();
-                openSettingsModal();
+                openSettingsWindow();
             }
         } else if (e.key === 'Escape') {
-            if (document.getElementById('settings-modal').classList.contains('active')) {
-                closeSettingsModal();
-            } else if (document.getElementById('editorSection').classList.contains('active')) {
+             if (document.getElementById('editorSection').classList.contains('active')) {
                 closeEditor();
             }
         }
