@@ -20,7 +20,6 @@ function init() {
     setupEventListeners();
 }
 
-// 冒頭に追加
 function escapeForExtendScript(str) {
     return str
         .replace(/\\/g, '/')
@@ -174,6 +173,10 @@ function saveSettings() {
 }
 
 // 設定ファイルを保存
+function escapeJsonForExtendScript(jsonStr) {
+    return jsonStr.replace(/'/g, "\\'");
+}
+
 function savePrefsFile(prefs, callback) {
     if (typeof CSInterface === 'undefined') {
         if (callback) callback();
@@ -183,10 +186,12 @@ function savePrefsFile(prefs, callback) {
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
     const jsonStr = JSON.stringify(prefs);
+
+    const safeJson = escapeJsonForExtendScript(jsonStr);
     
     csInterface.evalScript(`
         $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
-        writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${escapeForExtendScript(jsonStr)}');
+        writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${safeJson}');
     `, function() {
         if (callback) callback();
     });

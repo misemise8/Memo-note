@@ -37,9 +37,12 @@ function escapeForExtendScript(str) {
         .replace(/'/g, "\\'");
 }
 
-// セットアップ状態チェック
-// script.js の checkSetupStatus を修正
+function escapeJsonForExtendScript(jsonStr) {
+    // JSONの中のシングルクォートだけエスケープ
+    return jsonStr.replace(/'/g, "\\'");
+}
 
+// セットアップ状態チェック
 function checkSetupStatus() {
     console.log('checkSetupStatus called');
     
@@ -337,10 +340,12 @@ function savePrefsFile(prefs) {
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
     const jsonStr = JSON.stringify(prefs);
+
+    const safeJson = escapeJsonForExtendScript(jsonStr);
     
     csInterface.evalScript(`
         $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
-        writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${escapeForExtendScript(jsonStr)}');
+        writeJSONFile(Folder.myDocuments.fsName + "/MemoNotes", "settings.json", '${safeJson}');
     `);
 }
 
@@ -421,9 +426,11 @@ function writeToFile(filename, data) {
     const csInterface = new CSInterface();
     const extensionPath = csInterface.getSystemPath('extension');
     const jsonStr = JSON.stringify(data);
+    
     const safePath = escapeForExtendScript(dataFolderPath);
     const safeFilename = escapeForExtendScript(filename);
-    const safeJson = escapeForExtendScript(jsonStr);
+    
+    const safeJson = escapeJsonForExtendScript(jsonStr);
     
     csInterface.evalScript(`
         $.evalFile("${escapeForExtendScript(extensionPath)}/file-utils.jsx");
